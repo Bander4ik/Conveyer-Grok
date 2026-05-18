@@ -227,7 +227,7 @@ export const ALL_GROUPS: Group[] = [
       },
       {
         key: "ANIMATION_KEEP_VEO_AUDIO",
-        desc: "Whether to keep the ambient audio Veo generates inside each clip. Default empty — we mute it so only the TTS narration is heard. Set `1` if you want Veo's atmospheric sound layered behind the narrator.",
+        desc: "Whether to keep the ambient audio the video model bakes into each clip (Grok, Veo, etc.). Default empty — we mute it so only the HeyGen TTS narration is heard. Set `1` if you want the model's atmospheric sound layered behind the narrator. (Setting key is `ANIMATION_KEEP_VEO_AUDIO` for legacy reasons — applies to any model with embedded audio.)",
         examples: "empty = mute  ·  1 = keep ambient audio",
       },
     ],
@@ -238,7 +238,7 @@ export const ALL_GROUPS: Group[] = [
     fields: [
       {
         key: "VIDEO_RESOLUTION",
-        desc: "Final video resolution. 1920x1080 (1080p) is the YouTube standard. 1280x720 (720p) is smaller files but lower quality. Veo source clips are upscaled/downscaled to fit.",
+        desc: "Final video resolution. 1920x1080 (1080p) is the YouTube standard. 1280x720 (720p) is smaller files but lower quality. AI-generated source clips are upscaled/downscaled to fit.",
         examples: "1920x1080, 1280x720, 3840x2160",
       },
       {

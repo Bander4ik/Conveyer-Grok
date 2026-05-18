@@ -52,7 +52,7 @@ export async function runPipeline(runId: string, script: string) {
       log(
         runId,
         "info",
-        `Reusing ${reuseCount} clip${reuseCount === 1 ? "" : "s"} from library — those scenes skip Veo generation`,
+        `Reusing ${reuseCount} clip${reuseCount === 1 ? "" : "s"} from library — those scenes skip Grok generation`,
         { stage: "reuse", data: { reuseMap } }
       );
     }
@@ -100,12 +100,12 @@ export async function runPipeline(runId: string, script: string) {
       scenes.map(async (scene): Promise<SceneResult> => {
         try {
           checkCancelled(runId);
-          // Video-only mode: TTS + Veo text-to-video run in parallel. NO image
-          // generation step. Veo gets just the scene's visual_prompt — no
+          // Video-only mode: TTS + Grok text-to-video run in parallel. NO image
+          // generation step. Grok gets just the scene's visual_prompt — no
           // keyframe — and generates the clip from scratch.
           //
           // If this scene has a reuse mapping (user picked a clip from the
-          // library), skip Veo entirely and download the existing clip from
+          // library), skip Grok entirely and download the existing clip from
           // Drive in parallel with TTS — no quota consumed, much faster.
           const reuseFileId = reuseMap[String(scene.index)];
           const [audio, videoPath] = await Promise.all([

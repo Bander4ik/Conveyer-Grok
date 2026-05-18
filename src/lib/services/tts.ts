@@ -126,10 +126,15 @@ function clamp(n: number, min: number, max: number): number {
  * voice_id → user pastes it into /settings (HEYGEN_VOICE_ID). For every scene
  * the pipeline calls HeyGen with text + voice_id → gets back an mp3.
  *
- * Endpoint reference: https://docs.heygen.com/reference/create-tts-audio
- * If the endpoint 404s on your plan, try `/v1/voice/speech` (legacy) or
- * `/v2/text-to-speech` — HeyGen has shuffled this across API versions.
- * Verify the exact path against the HeyGen dashboard → API → Audio docs.
+ * Endpoint: `POST https://api.heygen.com/v3/voices/speech` (current v3 API)
+ *   Body: { voice_id, text, locale?, speed?, pitch? }
+ *   Auth: X-Api-Key header
+ *   Response: may return either direct audio bytes (Content-Type: audio/*) OR
+ *             JSON like { data: { audio_url: "..." } } — we handle both.
+ *
+ * Fallback: if v3 returns 404 on the user's plan, we retry on the legacy
+ * `POST /v1/audio/text_to_speech` endpoint with the same body shape.
+ * (HeyGen has shuffled this across API versions; both endpoints currently exist.)
  */
 async function heygenTts(runId: string, text: string, outPath: string) {
   const apiKey = getSetting("HEYGEN_API_KEY");
@@ -140,43 +145,69 @@ async function heygenTts(runId: string, text: string, outPath: string) {
       "HEYGEN_VOICE_ID is not set — pick a voice in HeyGen dashboard and paste the voice_id in /settings"
     );
 
-  // 1) Submit TTS request → returns audio_url (direct download)
-  const resp = await fetch("https://api.heygen.com/v2/audio.generate", {
-    method: "POST",
-    headers: {
-      "X-Api-Key": apiKey,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({
-      voice_id: voiceId,
-      text,
-      output_format: "mp3",
-    }),
-  });
+  // Optional speed control — reuse the global TTS_SPEED setting (clamped to HeyGen's 0.5–1.5).
+  const speedSetting = parseFloat(getSetting("TTS_SPEED"));
+  const speed = Number.isFinite(speedSetting)
+    ? Math.max(0.5, Math.min(1.5, speedSetting))
+    : undefined;
 
-  if (!resp.ok) {
-    const body = await resp.text();
-    throw new Error(`HeyGen TTS ${resp.status}: ${body.slice(0, 300)}`);
+  const body: Record<string, unknown> = { voice_id: voiceId, text };
+  if (speed !== undefined) body.speed = speed;
+
+  const tryEndpoint = async (url: string): Promise<Response> =>
+    fetch(url, {
+      method: "POST",
+      headers: {
+        "X-Api-Key": apiKey,
+        "Content-Type": "application/json",
+        // Hint that we'd happily take raw audio back if the server prefers streaming
+        Accept: "audio/mpeg, audio/wav, application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+  // Primary: v3
+  let resp = await tryEndpoint("https://api.heygen.com/v3/voices/speech");
+  if (resp.status === 404) {
+    log(runId, "debug", "HeyGen v3 endpoint 404 — falling back to /v1/audio/text_to_speech", { stage: "tts" });
+    resp = await tryEndpoint("https://api.heygen.com/v1/audio/text_to_speech");
   }
 
-  // HeyGen typically wraps payloads in { data: {...} }
+  if (!resp.ok) {
+    const errBody = await resp.text();
+    throw new Error(`HeyGen TTS ${resp.status}: ${errBody.slice(0, 300)}`);
+  }
+
+  // Two response shapes possible:
+  // (a) raw audio bytes (Content-Type: audio/mpeg or audio/wav) — write to disk directly
+  // (b) JSON wrapper { data: { audio_url } } — download from the URL
+  const contentType = (resp.headers.get("content-type") ?? "").toLowerCase();
+  if (contentType.startsWith("audio/") || contentType === "application/octet-stream") {
+    const buf = Buffer.from(await resp.arrayBuffer());
+    fs.writeFileSync(outPath, buf);
+    log(runId, "debug", `HeyGen TTS (raw audio, ${buf.length} bytes, voice=${voiceId.slice(0, 8)}…)`, {
+      stage: "tts",
+    });
+    return;
+  }
+
+  // JSON path — try common audio_url field names
   const json = (await resp.json()) as {
-    data?: { audio_url?: string; url?: string };
+    data?: { audio_url?: string; url?: string; audioUrl?: string };
     audio_url?: string;
+    audioUrl?: string;
     url?: string;
   };
   const audioUrl =
-    json.data?.audio_url ?? json.data?.url ?? json.audio_url ?? json.url;
+    json.data?.audio_url ?? json.data?.url ?? json.data?.audioUrl ?? json.audio_url ?? json.audioUrl ?? json.url;
   if (!audioUrl) {
     throw new Error(
       `HeyGen TTS returned no audio_url. Payload: ${JSON.stringify(json).slice(0, 300)}`
     );
   }
 
-  log(runId, "debug", `HeyGen TTS audio ready (voice=${voiceId.slice(0, 8)}…)`, { stage: "tts" });
+  log(runId, "debug", `HeyGen TTS audio_url ready (voice=${voiceId.slice(0, 8)}…) — downloading`, { stage: "tts" });
 
-  // 2) Download the audio file
   const audioResp = await fetch(audioUrl);
   if (!audioResp.ok) {
     throw new Error(`Failed to download HeyGen audio: ${audioResp.status} ${audioResp.statusText}`);

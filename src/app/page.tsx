@@ -7,7 +7,7 @@ const WORDS_PER_MINUTE = 150;
 
 // Per-job time estimates (in seconds), empirically tuned from production runs
 const AVG_IMAGE_SEC = 90;      // nano-banana-pro at 1k averages ~60-120s
-const AVG_VEO_VIDEO_SEC = 75;  // Veo 3.1 Fast averages ~60-90s
+const AVG_GROK_VIDEO_SEC = 75;  // Grok via 69labs averages ~60-90s per clip
 const AVG_TTS_SEC = 4;         // short scene narration through 69labs is ~2-6s
 const AVG_CLIP_RENDER_SEC = 8; // x264 veryfast render per Ken-Burns / animated clip
 const XFADE_FRAMES_PER_SEC = 1800; // approx encoding speed for xfade chain on one core
@@ -112,7 +112,7 @@ export default function NewRunPage() {
     const imageMin = (Math.ceil(N / stats.total.image) * AVG_IMAGE_SEC) / 60;
     const animScenes = stats.animationEnabled ? Math.ceil(N * (stats.animationRatio / 100)) : 0;
     const animMin =
-      animScenes > 0 ? (Math.ceil(animScenes / stats.total.anim) * AVG_VEO_VIDEO_SEC) / 60 : 0;
+      animScenes > 0 ? (Math.ceil(animScenes / stats.total.anim) * AVG_GROK_VIDEO_SEC) / 60 : 0;
     const ttsMin = (Math.ceil(N / stats.total.tts) * AVG_TTS_SEC) / 60;
     const phase1 = Math.max(imageMin, animMin, ttsMin);
     const phase2 = (Math.ceil(N / stats.assembleConcurrency) * AVG_CLIP_RENDER_SEC) / 60;
@@ -759,7 +759,7 @@ export default function NewRunPage() {
         <h3 style={{ fontWeight: 700, marginBottom: 8 }}>What happens next</h3>
         <ol style={{ paddingLeft: 20, lineHeight: 1.7 }}>
           <li>Gemini splits the script into scenes (with visual prompts per scene).</li>
-          <li>For each scene, TTS narration and a Veo video clip are generated in parallel.</li>
+          <li>For each scene, HeyGen TTS narration and a Grok video clip are generated in parallel.</li>
           <li>FFmpeg stitches all clips together with crossfade transitions.</li>
           <li>If Drive sync is on, the finished run is uploaded automatically.</li>
         </ol>

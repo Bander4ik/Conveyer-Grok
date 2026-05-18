@@ -9,7 +9,7 @@ import type { Scene } from "./scene-split";
  * picks it up as if it had been generated locally.
  *
  * Returns the local file path. Throws on download failure — the pipeline
- * catches and treats the scene as failed (same as a Veo failure), so we don't
+ * catches and treats the scene as failed (same as a Grok failure), so we don't
  * silently produce a "missing video" downstream.
  */
 export async function downloadReusedClip(
@@ -24,7 +24,7 @@ export async function downloadReusedClip(
   log(
     runId,
     "info",
-    `Scene #${scene.index}: reusing existing clip from Drive (skip Veo generation)`,
+    `Scene #${scene.index}: reusing existing clip from Drive (skip Grok generation)`,
     { stage: "reuse", data: { driveFileId } }
   );
 

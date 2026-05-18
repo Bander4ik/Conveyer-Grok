@@ -46,7 +46,6 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [run, setRun] = useState<Run | null>(null);
   const [assets, setAssets] = useState<AssetsResponse | null>(null);
-  const [reassembling, setReassembling] = useState(false);
   const [drive, setDrive] = useState<DriveStatus | null>(null);
   const [uploadingDrive, setUploadingDrive] = useState(false);
   const tail = useRef<HTMLDivElement>(null);
@@ -81,15 +80,6 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
   useEffect(() => {
     tail.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs.length]);
-
-  async function reassemble() {
-    setReassembling(true);
-    try {
-      await fetch(`/api/runs/${id}/reassemble`, { method: "POST" });
-    } finally {
-      setReassembling(false);
-    }
-  }
 
   async function cancel() {
     if (!confirm("Stop this run? Already generated files stay on disk, but no new progress will be made.")) return;
@@ -257,18 +247,6 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
               </a>
             </>
           )}
-        </div>
-      )}
-
-      {run?.status === "error" && assets && assets.scenes.length > 0 && !assets.finalExists && (
-        <div className="card" style={{ marginBottom: 12, borderColor: "#3a1d1d" }}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>⚠️ Pipeline failed, but assets are saved</div>
-          <p style={{ color: "#8a8aa0", fontSize: 13, marginBottom: 10 }}>
-            {assets.scenes.length} scenes already have audio + images on disk. You can fill any gaps and reassemble the final video without re-running the whole pipeline.
-          </p>
-          <button className="btn" onClick={reassemble} disabled={reassembling}>
-            {reassembling ? "Reassembling..." : "🔁 Reassemble from existing assets"}
-          </button>
         </div>
       )}
 
