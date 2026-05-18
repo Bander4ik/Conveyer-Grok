@@ -25,7 +25,7 @@ export interface Group {
 export const ALL_GROUPS: Group[] = [
   {
     title: "Required API Keys",
-    subtitle: "The bare minimum needed to run the pipeline. Without these two keys, nothing works.",
+    subtitle: "The bare minimum needed to run the pipeline. Without these keys, nothing works.",
     required: true,
     fields: [
       {
@@ -36,10 +36,22 @@ export const ALL_GROUPS: Group[] = [
       },
       {
         key: "LABS69_API_KEY",
-        desc: "All-in-one key for voice, images, and video animation through 69labs.vip. Replaces three separate provider subscriptions.\n\nPRO TIP: You can paste multiple keys from different 69labs accounts (one per line, or comma-separated). Each account adds another 7 parallel image jobs + 5 parallel video jobs to the pool. With 3 keys, generation is roughly 3× faster. The platform automatically balances jobs across all keys and pairs image→video chains to the same key (so img2vid still works).",
+        desc: "Key for image + Grok video generation through 69labs.vip.\n\nPRO TIP: You can paste multiple keys from different 69labs accounts (one per line, or comma-separated). Each account adds another 7 parallel image jobs + 5 parallel video jobs to the pool. With 3 keys, generation is roughly 3× faster. The platform automatically balances jobs across all keys and pairs image→video chains to the same key (so img2vid still works).",
         examples: "Single key: vk_abc... · Multiple keys: paste each on its own line. Each starts with vk_",
         required: true,
         multiline: true,
+      },
+      {
+        key: "HEYGEN_API_KEY",
+        desc: "HeyGen API key — generates the voiceover (TTS) for every scene. Get yours in the HeyGen dashboard → Settings → API.",
+        examples: "Sign up / log in at https://app.heygen.com/settings/api",
+        required: true,
+      },
+      {
+        key: "HEYGEN_VOICE_ID",
+        desc: "Which HeyGen voice to use. Pick (or clone) a voice once in the HeyGen dashboard, then paste its voice_id here. The pipeline calls HeyGen with text + this voice_id for every scene.",
+        examples: "HeyGen dashboard → Voices → click a voice → copy its ID (UUID-like string)",
+        required: true,
       },
     ],
   },
@@ -81,8 +93,8 @@ export const ALL_GROUPS: Group[] = [
     fields: [
       {
         key: "TTS_PROVIDER",
-        desc: "Top-level routing of TTS jobs. `69labs` is the default and covers all sub-providers below. Direct `elevenlabs` skips 69labs and uses ElevenLabs API key. `openai` uses gpt-4o-mini-tts.",
-        examples: "69labs  /  elevenlabs  /  openai",
+        desc: "Which TTS service generates the voiceover. `heygen` is the default for Conveyer Grok (uses HEYGEN_API_KEY + HEYGEN_VOICE_ID above). `69labs` routes through 69labs gateway. `elevenlabs` skips 69labs and uses ElevenLabs API key directly. `openai` uses gpt-4o-mini-tts.",
+        examples: "heygen  /  69labs  /  elevenlabs  /  openai",
       },
       {
         key: "TTS_VOICE_PROVIDER",
@@ -190,13 +202,13 @@ export const ALL_GROUPS: Group[] = [
     fields: [
       {
         key: "ANIMATION_PROVIDER",
-        desc: "Service for img2vid. `off` skips animation entirely. `69labs` uses Google Veo or xAI Grok. `replicate`/`fal` open the door to Kling, Luma, Runway etc.",
+        desc: "Service for img2vid. `off` skips animation entirely. `69labs` routes to xAI Grok or Google Veo. `replicate`/`fal` open the door to Kling, Luma, Runway etc.",
         examples: "off  /  69labs  /  replicate  /  fal",
       },
       {
         key: "ANIMATION_MODEL",
-        desc: "Specific model id. `veo-video` (Google Veo 3.1 Fast) is the highest quality option in 69labs. `grok-imagine-video` is a slightly different style. For Replicate, use `kwaivgi/kling-v1.6-pro` for cinematic motion.",
-        examples: "veo-video, grok-imagine-video, kwaivgi/kling-v1.6-standard",
+        desc: "Specific model id. `grok-imagine-video` (xAI Grok) is the Conveyer Grok default — that's what this fork is built around. `veo-video` (Google Veo 3.1 Fast) is the alternate 69labs option. For Replicate, use `kwaivgi/kling-v1.6-pro` for cinematic motion.",
+        examples: "grok-imagine-video, veo-video, kwaivgi/kling-v1.6-standard",
       },
       {
         key: "ANIMATION_RATIO_PERCENT",
