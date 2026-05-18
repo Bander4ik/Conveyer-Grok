@@ -194,7 +194,7 @@ export const DEFAULTS: Record<SettingKey, string> = {
   ANIMATION_MODEL: "grok-imagine-video",  // xAI Grok video via 69labs (text-to-video)
   ANIMATION_RATIO_PERCENT: "100",         // 100 % of scenes animated, no Ken-Burns mix
   ANIMATION_DISTRIBUTION: "all",
-  ANIMATION_DURATION: "5",
+  ANIMATION_DURATION: "",                 // empty = auto-fit to scene.duration_hint_sec (clamped 6-14s for Grok)
   ANIMATION_KEEP_VEO_AUDIO: "",           // legacy name — applies to any model with embedded audio
 
   // Video assembly

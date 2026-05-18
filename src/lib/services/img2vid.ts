@@ -64,7 +64,7 @@ async function labs69Img2Vid(
   const model = getSetting("ANIMATION_MODEL") || undefined;
   const aspectRatio = getSetting("IMAGE_RATIO") || undefined;
   const durationSetting = getSetting("ANIMATION_DURATION") || undefined;
-  // ANIMATION_KEEP_VEO_AUDIO=1 — keep Veo's generated audio (default: off, mute it).
+  // ANIMATION_KEEP_VEO_AUDIO=1 — keep generated ambient audio (default: off, mute it).
   const keepAudio = getSetting("ANIMATION_KEEP_VEO_AUDIO") === "1";
 
   // Live-photo style: per-scene visual prompt + global motion-style suffix.
@@ -75,9 +75,20 @@ async function labs69Img2Vid(
   // reuses the cached image instead of making us re-upload bytes.
   const usableJobId = imageProvider === "69labs" ? providerJobId : undefined;
 
-  // Veo 3.1 Fast does NOT support custom duration. Only pass it for other models.
+  // Veo 3.1 Fast does NOT support custom duration. For other models (Grok etc.)
+  // either use the explicit ANIMATION_DURATION setting, OR auto-fit to the
+  // scene's narration length (clamped to Grok's 6–14 s sweet spot).
   const supportsDuration = model && !/^veo/i.test(model);
-  const duration = supportsDuration && durationSetting ? durationSetting : undefined;
+  let duration: string | undefined;
+  if (supportsDuration) {
+    if (durationSetting) {
+      duration = durationSetting;
+    } else {
+      // Auto-fit to scene narration; clamp to Grok's supported range.
+      const sceneDur = Math.max(6, Math.min(14, Math.ceil(scene.duration_hint_sec || 8)));
+      duration = String(sceneDur);
+    }
+  }
 
   // Retry: timeout → cancel → retry. Same pattern as image-gen.
   const MAX_ATTEMPTS = 3;
