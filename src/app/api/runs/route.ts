@@ -13,7 +13,7 @@ const setReuseMap = db.prepare(
   "UPDATE runs SET reuse_map_json = ? WHERE id = ?"
 );
 const setPresetSnapshot = db.prepare(
-  "UPDATE runs SET preset_id = ?, preset_name = ?, preset_content = ? WHERE id = ?"
+  "UPDATE runs SET preset_id = ?, preset_name = ?, preset_content = ?, preset_animation_motion = ?, preset_image_prompt = ? WHERE id = ?"
 );
 const listRuns = db.prepare(
   "SELECT id, title, folder_name, status, created_at, updated_at, output_path FROM runs ORDER BY created_at DESC LIMIT 50"
@@ -60,11 +60,19 @@ export async function POST(req: Request) {
 
   // Snapshot the chosen prompt preset (if any) onto the run row. We store the
   // content too, not just the id, so deleting the preset later doesn't break
-  // re-runs / diagnostics.
+  // re-runs / diagnostics. All 3 fields snapshotted: scene_split content,
+  // optional animation_motion override, optional image_prompt override.
   if (typeof body.presetId === "number" && body.presetId > 0) {
     const preset = getPromptPreset(body.presetId);
     if (preset) {
-      setPresetSnapshot.run(preset.id, preset.name, preset.content, id);
+      setPresetSnapshot.run(
+        preset.id,
+        preset.name,
+        preset.content,
+        preset.animation_motion,
+        preset.image_prompt,
+        id
+      );
     }
   }
 

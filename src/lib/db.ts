@@ -35,14 +35,18 @@ db.exec(`
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
-  -- User-defined named presets for the scene_split system prompt. Lets the
-  -- user keep one preset per YouTube channel (or per video style) and switch
-  -- between them on the New Run page. Empty by default — the pipeline falls
-  -- back to the built-in scene_split prompt when no preset is picked.
+  -- User-defined named presets for the prompt bundle (scene_split required,
+  -- animation_motion + image_prompt optional). Lets the user keep one preset
+  -- per YouTube channel (or per video style) and switch between them on the
+  -- New Run page in a single click. Optional fields fall back to the global
+  -- Default prompts when NULL.
+  -- The "content" column is the scene_split prompt (legacy column name).
   CREATE TABLE IF NOT EXISTS prompt_presets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     content TEXT NOT NULL,
+    animation_motion TEXT,
+    image_prompt TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -90,10 +94,16 @@ tryAddColumn("runs", "drive_synced_at TEXT");
 // Reuse map — JSON `{ "<scene_index>": "<drive_file_id>" }`. When present,
 // the pipeline skips video generation for those scenes and downloads from Drive.
 tryAddColumn("runs", "reuse_map_json TEXT");
-// Prompt preset used for scene splitting. Stored as a snapshot of the
-// content (not a FK) so deleting the preset later doesn't break old runs.
+// Prompt preset used for scene splitting + animation motion + image style.
+// Stored as a snapshot of the content (not FKs) so deleting the preset later
+// doesn't break old runs / diagnostics. preset_content == scene_split.
 tryAddColumn("runs", "preset_id INTEGER");
 tryAddColumn("runs", "preset_name TEXT");
 tryAddColumn("runs", "preset_content TEXT");
+tryAddColumn("runs", "preset_animation_motion TEXT");
+tryAddColumn("runs", "preset_image_prompt TEXT");
+// Backfill for older prompt_presets rows (created before these columns existed)
+tryAddColumn("prompt_presets", "animation_motion TEXT");
+tryAddColumn("prompt_presets", "image_prompt TEXT");
 
 export default db;

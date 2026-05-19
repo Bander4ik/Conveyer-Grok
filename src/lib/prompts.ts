@@ -95,25 +95,30 @@ export function seedPromptDefaults() {
 export interface PromptPreset {
   id: number;
   name: string;
+  /** scene_split prompt (required) */
   content: string;
+  /** animation_motion override (optional — NULL means fall back to global default) */
+  animation_motion: string | null;
+  /** image_prompt override (optional — currently unused since Conveyer Grok is video-only) */
+  image_prompt: string | null;
   created_at: string;
   updated_at: string;
 }
 
 const listPresetsStmt = db.prepare(
-  "SELECT id, name, content, created_at, updated_at FROM prompt_presets ORDER BY name COLLATE NOCASE ASC"
+  "SELECT id, name, content, animation_motion, image_prompt, created_at, updated_at FROM prompt_presets ORDER BY name COLLATE NOCASE ASC"
 );
 const getPresetStmt = db.prepare(
-  "SELECT id, name, content, created_at, updated_at FROM prompt_presets WHERE id = ?"
+  "SELECT id, name, content, animation_motion, image_prompt, created_at, updated_at FROM prompt_presets WHERE id = ?"
 );
 const getPresetByNameStmt = db.prepare(
-  "SELECT id, name, content, created_at, updated_at FROM prompt_presets WHERE name = ?"
+  "SELECT id, name, content, animation_motion, image_prompt, created_at, updated_at FROM prompt_presets WHERE name = ?"
 );
 const createPresetStmt = db.prepare(
-  "INSERT INTO prompt_presets (name, content) VALUES (?, ?)"
+  "INSERT INTO prompt_presets (name, content, animation_motion, image_prompt) VALUES (?, ?, ?, ?)"
 );
 const updatePresetStmt = db.prepare(
-  "UPDATE prompt_presets SET name = ?, content = ?, updated_at = datetime('now') WHERE id = ?"
+  "UPDATE prompt_presets SET name = ?, content = ?, animation_motion = ?, image_prompt = ?, updated_at = datetime('now') WHERE id = ?"
 );
 const deletePresetStmt = db.prepare("DELETE FROM prompt_presets WHERE id = ?");
 
@@ -131,19 +136,48 @@ export function getPromptPresetByName(name: string): PromptPreset | null {
   return row ?? null;
 }
 
-export function createPromptPreset(name: string, content: string): number {
+/** Normalize an optional string field — empty/whitespace becomes NULL (means "inherit default"). */
+function normalizeOptional(s: string | null | undefined): string | null {
+  if (s == null) return null;
+  const trimmed = s.trim();
+  return trimmed.length > 0 ? s : null;
+}
+
+export function createPromptPreset(
+  name: string,
+  content: string,
+  animationMotion?: string | null,
+  imagePrompt?: string | null
+): number {
   const trimmedName = name.trim();
   if (!trimmedName) throw new Error("Preset name cannot be empty");
-  if (!content.trim()) throw new Error("Preset content cannot be empty");
-  const result = createPresetStmt.run(trimmedName, content);
+  if (!content.trim()) throw new Error("Preset scene_split content cannot be empty");
+  const result = createPresetStmt.run(
+    trimmedName,
+    content,
+    normalizeOptional(animationMotion),
+    normalizeOptional(imagePrompt)
+  );
   return Number(result.lastInsertRowid);
 }
 
-export function updatePromptPreset(id: number, name: string, content: string): void {
+export function updatePromptPreset(
+  id: number,
+  name: string,
+  content: string,
+  animationMotion?: string | null,
+  imagePrompt?: string | null
+): void {
   const trimmedName = name.trim();
   if (!trimmedName) throw new Error("Preset name cannot be empty");
-  if (!content.trim()) throw new Error("Preset content cannot be empty");
-  const result = updatePresetStmt.run(trimmedName, content, id);
+  if (!content.trim()) throw new Error("Preset scene_split content cannot be empty");
+  const result = updatePresetStmt.run(
+    trimmedName,
+    content,
+    normalizeOptional(animationMotion),
+    normalizeOptional(imagePrompt),
+    id
+  );
   if (result.changes === 0) throw new Error(`Preset id=${id} not found`);
 }
 

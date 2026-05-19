@@ -27,9 +27,14 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const id = parseId(idStr);
   if (id == null) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
 
-  let body: { name?: string; content?: string };
+  let body: {
+    name?: string;
+    content?: string;
+    animation_motion?: string | null;
+    image_prompt?: string | null;
+  };
   try {
-    body = (await req.json()) as { name?: string; content?: string };
+    body = (await req.json()) as typeof body;
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
@@ -39,7 +44,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   if (!content.trim()) return NextResponse.json({ error: "content is required" }, { status: 400 });
 
   try {
-    updatePromptPreset(id, name, content);
+    updatePromptPreset(id, name, content, body.animation_motion, body.image_prompt);
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

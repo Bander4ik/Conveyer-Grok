@@ -14,7 +14,9 @@ import { syncRunToDrive } from "./services/run-upload";
 import { downloadReusedClip } from "./services/reuse";
 
 const getReuseMapStmt = db.prepare("SELECT reuse_map_json FROM runs WHERE id = ?");
-const getPresetContentStmt = db.prepare("SELECT preset_content FROM runs WHERE id = ?");
+const getPresetSnapshotStmt = db.prepare(
+  "SELECT preset_content, preset_animation_motion FROM runs WHERE id = ?"
+);
 import { checkCancelled, clearCancelled, CancelledError } from "./cancellation";
 
 const updateRun = db.prepare(
@@ -35,8 +37,13 @@ export async function runPipeline(runId: string, script: string) {
 
     // 1. Split script into scenes — using a chosen Prompt Preset if the user
     //    picked one on the New Run page (snapshot is stored on the run row).
-    const presetRow = getPresetContentStmt.get(runId) as { preset_content: string | null } | undefined;
+    //    `preset_animation_motion` (if non-null) overrides the Animation Motion
+    //    suffix later in the loop when animating each scene.
+    const presetRow = getPresetSnapshotStmt.get(runId) as
+      | { preset_content: string | null; preset_animation_motion: string | null }
+      | undefined;
     const overridePrompt = presetRow?.preset_content ?? undefined;
+    const motionOverride = presetRow?.preset_animation_motion ?? null;
     const scenes = await splitScript(runId, script, overridePrompt);
     checkCancelled(runId);
     fs.writeFileSync(path.join(runDir, "scenes.json"), JSON.stringify(scenes, null, 2), "utf-8");
@@ -112,7 +119,7 @@ export async function runPipeline(runId: string, script: string) {
             limitTts(() => synthesizeScene(runId, scene, audioDir)),
             reuseFileId
               ? downloadReusedClip(runId, scene, reuseFileId, animDir)
-              : limitAnim(() => animateScene(runId, scene, null, animDir, {})),
+              : limitAnim(() => animateScene(runId, scene, null, animDir, { motionOverride })),
           ]);
 
           if (!videoPath) {

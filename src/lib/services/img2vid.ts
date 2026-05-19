@@ -24,7 +24,13 @@ export async function animateScene(
   scene: Scene,
   imagePath: string | null,
   outDir: string,
-  options: { providerJobId?: string; imageProvider?: string } = {}
+  options: {
+    providerJobId?: string;
+    imageProvider?: string;
+    /** Optional preset-level override for the animation_motion suffix.
+     *  Empty/null → fall back to global default from prompts table. */
+    motionOverride?: string | null;
+  } = {}
 ): Promise<string | null> {
   const provider = (getSetting("ANIMATION_PROVIDER") || "off").toLowerCase();
   if (provider === "off") return null;
@@ -39,7 +45,14 @@ export async function animateScene(
   });
 
   if (provider === "69labs") {
-    await labs69Img2Vid(runId, scene, options.providerJobId, options.imageProvider, filePath);
+    await labs69Img2Vid(
+      runId,
+      scene,
+      options.providerJobId,
+      options.imageProvider,
+      filePath,
+      options.motionOverride
+    );
   } else if (provider === "replicate") {
     if (!imagePath) throw new Error("Replicate Kling needs an image keyframe — not available in Conveyer Grok's video-only flow.");
     await replicateImg2Vid(scene, imagePath, filePath);
@@ -59,7 +72,8 @@ async function labs69Img2Vid(
   scene: Scene,
   providerJobId: string | undefined,
   imageProvider: string | undefined,
-  outPath: string
+  outPath: string,
+  motionOverride?: string | null
 ) {
   const model = getSetting("ANIMATION_MODEL") || undefined;
   const aspectRatio = getSetting("IMAGE_RATIO") || undefined;
@@ -67,8 +81,12 @@ async function labs69Img2Vid(
   // ANIMATION_KEEP_VEO_AUDIO=1 — keep generated ambient audio (default: off, mute it).
   const keepAudio = getSetting("ANIMATION_KEEP_VEO_AUDIO") === "1";
 
-  // Live-photo style: per-scene visual prompt + global motion-style suffix.
-  const motionStyle = getPrompt("animation_motion");
+  // Motion style: preset override (per channel) wins over the global default.
+  // Empty/null override means "inherit global" — fall back to getPrompt().
+  const motionStyle =
+    motionOverride && motionOverride.trim().length > 0
+      ? motionOverride
+      : getPrompt("animation_motion");
   const prompt = `${scene.visual_prompt}. ${motionStyle}`;
 
   // If the image was generated through 69labs, pass its jobId so the API

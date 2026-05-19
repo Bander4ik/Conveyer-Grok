@@ -5,6 +5,8 @@ interface PromptPreset {
   id: number;
   name: string;
   content: string;
+  animation_motion: string | null;
+  image_prompt: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -18,7 +20,7 @@ const META: { name: string; label: string; help: string; rows: number }[] = [
       "return a JSON array. Each scene has `text` (verbatim slice of the script), `visual_prompt` " +
       "(English description of the shot for the image generator), and `duration_hint_sec`. " +
       "Modify this to change the visual style direction or to adjust how aggressively the script is split. " +
-      "This is the DEFAULT prompt — saved presets below can override it per run.",
+      "This is the DEFAULT prompt — saved presets above can override it per run.",
     rows: 18,
   },
   {
@@ -26,18 +28,17 @@ const META: { name: string; label: string; help: string; rows: number }[] = [
     label: "Image Style — suffix appended to every image prompt",
     help:
       "Pure style instructions (no subject matter) appended to every scene's visual_prompt before being " +
-      "sent to the image model. Defines the look-and-feel of the entire channel — e.g. \"documentary " +
-      "photography, photoreal, no people\" vs \"painterly artwork, dreamy lighting\". The actual subject of " +
-      "each shot comes from Gemini's per-scene visual_prompt.",
+      'sent to the image model. Currently NOT USED in Conveyer Grok (video-only mode — no image stage). ' +
+      "Kept here for future use when image generation is re-enabled.",
     rows: 5,
   },
   {
     name: "animation_motion",
-    label: "Animation Motion — motion style for img2vid (Grok)",
+    label: "Animation Motion — motion style for Grok img2vid",
     help:
-      "Appended to every scene's visual_prompt when img2vid is enabled. Tells the video model what kind " +
+      "Appended to every scene's visual_prompt before being sent to Grok. Tells the video model what kind " +
       "of motion you want — subtle parallax for living-photo feel, vs aggressive movement for dramatic " +
-      "B-roll.",
+      "B-roll. Presets above can override this per channel.",
     rows: 4,
   },
 ];
@@ -50,9 +51,11 @@ export default function PromptsPage() {
   const [presets, setPresets] = useState<PromptPreset[]>([]);
   const [newName, setNewName] = useState("");
   const [newContent, setNewContent] = useState("");
+  const [newAnimationMotion, setNewAnimationMotion] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editContent, setEditContent] = useState("");
+  const [editAnimationMotion, setEditAnimationMotion] = useState("");
   const [presetError, setPresetError] = useState<string | null>(null);
 
   async function load() {
@@ -81,13 +84,17 @@ export default function PromptsPage() {
   async function createPreset() {
     setPresetError(null);
     if (!newName.trim() || !newContent.trim()) {
-      setPresetError("Both name and content are required");
+      setPresetError("Both name and scene_split content are required");
       return;
     }
     const r = await fetch("/api/prompt-presets", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName, content: newContent }),
+      body: JSON.stringify({
+        name: newName,
+        content: newContent,
+        animation_motion: newAnimationMotion.trim() || null,
+      }),
     });
     if (!r.ok) {
       const j = (await r.json().catch(() => ({}))) as { error?: string };
@@ -96,6 +103,7 @@ export default function PromptsPage() {
     }
     setNewName("");
     setNewContent("");
+    setNewAnimationMotion("");
     await loadPresets();
   }
 
@@ -103,6 +111,7 @@ export default function PromptsPage() {
     setEditingId(p.id);
     setEditName(p.name);
     setEditContent(p.content);
+    setEditAnimationMotion(p.animation_motion ?? "");
     setPresetError(null);
   }
 
@@ -110,6 +119,7 @@ export default function PromptsPage() {
     setEditingId(null);
     setEditName("");
     setEditContent("");
+    setEditAnimationMotion("");
   }
 
   async function saveEdit() {
@@ -118,7 +128,11 @@ export default function PromptsPage() {
     const r = await fetch(`/api/prompt-presets/${editingId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: editName, content: editContent }),
+      body: JSON.stringify({
+        name: editName,
+        content: editContent,
+        animation_motion: editAnimationMotion.trim() || null,
+      }),
     });
     if (!r.ok) {
       const j = (await r.json().catch(() => ({}))) as { error?: string };
@@ -140,25 +154,30 @@ export default function PromptsPage() {
     setNewContent(values.scene_split ?? "");
   }
 
+  function copyMotionFromDefault() {
+    setNewAnimationMotion(values.animation_motion ?? "");
+  }
+
   return (
     <div>
       <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 4 }}>Prompts</h1>
       <p style={{ color: "#8a8aa0", marginBottom: 16, lineHeight: 1.6 }}>
         Default system prompts below drive the pipeline. <strong>Presets</strong> let you keep
-        different scene-split prompts (e.g. one per YouTube channel) and pick one on each run.
+        different prompt bundles (e.g. one per YouTube channel) and pick one on each run — each
+        preset can override scene_split and (optionally) Animation Motion.
       </p>
 
       {/* ── Presets section ─────────────────────────────────────────── */}
       <div className="card" style={{ marginBottom: 24, padding: 16 }}>
         <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>
-          Scene-split presets <span style={{ color: "#8a8aa0", fontWeight: 400, fontSize: 14 }}>
+          Prompt presets <span style={{ color: "#8a8aa0", fontWeight: 400, fontSize: 14 }}>
             ({presets.length})
           </span>
         </h2>
         <p style={{ color: "#9090a8", fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>
-          Save a different scene_split prompt per channel. On the New Run page you'll see a
-          dropdown to pick which preset to use. If nothing is picked, the default scene_split
-          prompt below is used.
+          Save a named bundle of (1) scene_split prompt + (2) optional Animation Motion override
+          per channel. On the New Run page you'll see a dropdown to pick which preset to use.
+          Fields you leave empty in a preset fall back to the global defaults below.
         </p>
 
         {presetError && (
@@ -202,11 +221,28 @@ export default function PromptsPage() {
                   placeholder="Preset name"
                   style={{ marginBottom: 8, width: "100%" }}
                 />
+                <label className="label" style={{ marginTop: 4, marginBottom: 4 }}>
+                  Scene Split prompt <span style={{ color: "#ff6b6b" }}>*</span>
+                </label>
                 <textarea
                   className="textarea"
                   rows={12}
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
+                  style={{ width: "100%", marginBottom: 10 }}
+                />
+                <label className="label" style={{ marginTop: 4, marginBottom: 4 }}>
+                  Animation Motion override{" "}
+                  <span style={{ color: "#8a8aa0", fontWeight: 400, fontSize: 12 }}>
+                    (optional — empty = use global default)
+                  </span>
+                </label>
+                <textarea
+                  className="textarea"
+                  rows={4}
+                  value={editAnimationMotion}
+                  onChange={(e) => setEditAnimationMotion(e.target.value)}
+                  placeholder="Leave empty to inherit the default Animation Motion prompt from below."
                   style={{ width: "100%", marginBottom: 8 }}
                 />
                 <div style={{ display: "flex", gap: 8 }}>
@@ -228,7 +264,25 @@ export default function PromptsPage() {
             ) : (
               <>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, flex: 1 }}>{p.name}</div>
+                  <div style={{ fontWeight: 700, fontSize: 15, flex: 1 }}>
+                    {p.name}
+                    {p.animation_motion && (
+                      <span
+                        style={{
+                          marginLeft: 8,
+                          padding: "2px 7px",
+                          background: "#2a2440",
+                          color: "#a690ff",
+                          borderRadius: 4,
+                          fontSize: 11,
+                          fontWeight: 600,
+                        }}
+                        title="This preset overrides the default Animation Motion prompt"
+                      >
+                        + motion
+                      </span>
+                    )}
+                  </div>
                   <div style={{ color: "#6a6a80", fontSize: 12 }}>
                     {new Date(p.updated_at).toLocaleDateString()}
                   </div>
@@ -255,34 +309,64 @@ export default function PromptsPage() {
             onChange={(e) => setNewName(e.target.value)}
             style={{ marginBottom: 8, width: "100%" }}
           />
+          <label className="label" style={{ marginTop: 4, marginBottom: 4 }}>
+            Scene Split prompt <span style={{ color: "#ff6b6b" }}>*</span>
+          </label>
           <textarea
             className="textarea"
             rows={10}
             placeholder="Paste your scene_split system prompt here..."
             value={newContent}
             onChange={(e) => setNewContent(e.target.value)}
-            style={{ width: "100%", marginBottom: 8 }}
+            style={{ width: "100%", marginBottom: 6 }}
           />
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn" onClick={createPreset}>
-              Add preset
-            </button>
+          <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
             <button
               className="btn"
               onClick={copyFromDefault}
-              style={{ background: "#2a2a3a" }}
+              style={{ background: "#2a2a3a", padding: "4px 10px", fontSize: 12 }}
               title="Copy current default scene_split as a starting point"
             >
-              Copy from default
+              ↓ Copy scene_split from default
             </button>
           </div>
+
+          <label className="label" style={{ marginTop: 4, marginBottom: 4 }}>
+            Animation Motion override{" "}
+            <span style={{ color: "#8a8aa0", fontWeight: 400, fontSize: 12 }}>
+              (optional — empty = use global default)
+            </span>
+          </label>
+          <textarea
+            className="textarea"
+            rows={4}
+            value={newAnimationMotion}
+            onChange={(e) => setNewAnimationMotion(e.target.value)}
+            placeholder="Leave empty to inherit the default Animation Motion prompt. Fill in to override per-preset (e.g. different motion style for a different channel)."
+            style={{ width: "100%", marginBottom: 6 }}
+          />
+          <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+            <button
+              className="btn"
+              onClick={copyMotionFromDefault}
+              style={{ background: "#2a2a3a", padding: "4px 10px", fontSize: 12 }}
+              title="Copy current default Animation Motion as a starting point"
+            >
+              ↓ Copy motion from default
+            </button>
+          </div>
+
+          <button className="btn" onClick={createPreset}>
+            Add preset
+          </button>
         </div>
       </div>
 
       {/* ── Default prompts section ─────────────────────────────────── */}
       <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>Default prompts</h2>
       <p style={{ color: "#9090a8", fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>
-        Used when no preset is selected on a run. Changes take effect on the next run — no restart needed.
+        Used when no preset is selected on a run, or when a preset leaves a field empty. Changes
+        take effect on the next run — no restart needed.
       </p>
       <div style={{ marginBottom: 12 }}>
         <button className="btn" onClick={save}>

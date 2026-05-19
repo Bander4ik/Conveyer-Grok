@@ -9,9 +9,14 @@ export async function GET() {
 
 export async function POST(req: Request) {
   ensureInit();
-  let body: { name?: string; content?: string };
+  let body: {
+    name?: string;
+    content?: string;
+    animation_motion?: string | null;
+    image_prompt?: string | null;
+  };
   try {
-    body = (await req.json()) as { name?: string; content?: string };
+    body = (await req.json()) as typeof body;
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
@@ -21,7 +26,7 @@ export async function POST(req: Request) {
   if (!content.trim()) return NextResponse.json({ error: "content is required" }, { status: 400 });
 
   try {
-    const id = createPromptPreset(name, content);
+    const id = createPromptPreset(name, content, body.animation_motion, body.image_prompt);
     return NextResponse.json({ ok: true, id });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
