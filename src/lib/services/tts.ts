@@ -166,11 +166,32 @@ async function heygenTts(runId: string, text: string, outPath: string) {
       body: JSON.stringify(body),
     });
 
-  // Primary: v3
+  // Primary: v3. Fall back to legacy v1 if v3 fails for any of the known
+  // "voice engine mismatch" reasons:
+  //   - 404 (endpoint not enabled on the user's plan)
+  //   - 400 with "VoiceProvider.STARFISH" / "not supported" (the voice_id is
+  //     bound to an engine that /v3/voices/speech can't serve — common for
+  //     stock or cloned voices that only legacy /v1 supports)
   let resp = await tryEndpoint("https://api.heygen.com/v3/voices/speech");
-  if (resp.status === 404) {
-    log(runId, "debug", "HeyGen v3 endpoint 404 — falling back to /v1/audio/text_to_speech", { stage: "tts" });
-    resp = await tryEndpoint("https://api.heygen.com/v1/audio/text_to_speech");
+
+  if (!resp.ok) {
+    // Peek at the error message without consuming the stream
+    const errBodyV3 = await resp.text();
+    const shouldFallback =
+      resp.status === 404 ||
+      (resp.status === 400 &&
+        /voiceprovider|voice engine|not supported|invalid voice/i.test(errBodyV3));
+    if (shouldFallback) {
+      log(
+        runId,
+        "debug",
+        `HeyGen v3 returned ${resp.status} (${errBodyV3.slice(0, 120)}) — falling back to /v1/audio/text_to_speech`,
+        { stage: "tts" }
+      );
+      resp = await tryEndpoint("https://api.heygen.com/v1/audio/text_to_speech");
+    } else {
+      throw new Error(`HeyGen TTS ${resp.status}: ${errBodyV3.slice(0, 300)}`);
+    }
   }
 
   if (!resp.ok) {
