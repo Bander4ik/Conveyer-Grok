@@ -196,6 +196,18 @@ async function heygenTts(runId: string, text: string, outPath: string) {
 
   if (!resp.ok) {
     const errBody = await resp.text();
+    // Specifically diagnose the STARFISH avatar-voice case so the user knows
+    // they need a different voice_id, not a code fix.
+    if (
+      resp.status === 400 &&
+      /VoiceProvider\.STARFISH|starfish/i.test(errBody)
+    ) {
+      throw new Error(
+        `HeyGen TTS rejected your voice_id — it appears to be a STARFISH (avatar / streaming-only) voice, not a standalone TTS voice. ` +
+          `Open HeyGen dashboard → Voices (NOT Avatars / Streaming Avatars), pick a voice powered by ElevenLabs or Panda engine, copy that voice_id into /settings → HEYGEN_VOICE_ID, and re-run. ` +
+          `Raw error: ${errBody.slice(0, 200)}`
+      );
+    }
     throw new Error(`HeyGen TTS ${resp.status}: ${errBody.slice(0, 300)}`);
   }
 
