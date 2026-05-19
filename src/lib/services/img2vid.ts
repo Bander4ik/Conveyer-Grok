@@ -94,30 +94,24 @@ async function labs69Img2Vid(
   const usableJobId = imageProvider === "69labs" ? providerJobId : undefined;
 
   // Duration parameter rules per model:
-  //  - Veo 3.1 Fast: ignores duration entirely, always returns ~6s. Skip.
-  //  - Grok Imagine Video: 69labs accepts "6s" or "10s" string (NOT bare "6" —
-  //    that's why our earlier attempts returned 400 "does not support duration
-  //    selection"; the parser couldn't read the value, not that the model
-  //    rejected the field). xAI native allows 1–15s, but 69labs gateway maps
-  //    Grok to discrete {6s, 10s}. We auto-pick based on scene length.
-  //  - Other (Kling etc.): pass through clamped integer.
+  //  - Veo 3.1 Fast: ignores duration entirely. Skip.
+  //  - Grok Imagine Video via 69labs: gateway hard-rejects duration with
+  //    HTTP 400 "Grok Video does not support duration selection" no matter
+  //    what format we send ("6", "6s", "10s" — all fail). The 69labs
+  //    OpenAPI spec lists duration on the endpoint but the runtime check
+  //    blocks it specifically for Grok. So we skip it and 69labs returns
+  //    its fixed ~6-second clip. xAI native allows 6–15s, but only via
+  //    direct API or other gateways (Replicate/fal/wavespeed).
+  //  - Other models (Kling etc.): pass duration through with "<N>s" format.
   const isGrok = model && /^grok/i.test(model);
   const isVeo = model && /^veo/i.test(model);
   let duration: string | undefined;
 
-  if (!isVeo) {
+  if (!isVeo && !isGrok) {
     if (durationSetting) {
-      // User picked an explicit value in /settings. Normalize whatever they
-      // typed ("10", "10s", " 10 s ") to a clean "<N>s" string.
       const n = parseInt(String(durationSetting).replace(/[^0-9]/g, ""), 10);
       if (Number.isFinite(n) && n > 0) duration = `${n}s`;
-    } else if (isGrok) {
-      // Auto-pick from scene narration length. Snap to Grok's two stops:
-      // 6s for short scenes, 10s for longer ones. Documentary pacing.
-      const sceneDur = scene.duration_hint_sec || 5;
-      duration = sceneDur <= 5.5 ? "6s" : "10s";
     } else {
-      // Generic non-Veo/non-Grok (Kling, etc.) — clamp to 4–10s.
       const sceneDur = Math.max(4, Math.min(10, Math.ceil(scene.duration_hint_sec || 5)));
       duration = `${sceneDur}s`;
     }
