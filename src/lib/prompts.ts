@@ -8,21 +8,22 @@ export const DEFAULT_PROMPTS: Record<PromptName, string> = {
 Split the provided script into scenes for an automated AI video pipeline.
 
 WHY SCENE LENGTH MATTERS (read this before splitting):
-  The video generator (xAI Grok via 69labs) produces clips up to ~15 seconds.
-  We target each scene's narration to fit comfortably under ~12 s so the Grok
-  clip covers it end-to-end with real motion (with a small safety margin).
-  Going significantly past 12 s risks the visual freezing on the last frame.
+  The video generator (xAI Grok via 69labs) produces FIXED ~6-second clips —
+  69labs does not let us select a duration for Grok. If a scene's narration
+  runs significantly longer than 6 s, the visual freezes (or loops) on the
+  last frame, which looks bad. So we keep scenes SHORT and the clip covers
+  the audio end-to-end with real motion.
 
 CRITICAL RULES:
 1. Cover the ENTIRE script verbatim, with NO omissions, no summarizing, no paraphrasing.
 2. The concatenation of every scene's "text" field (joined by spaces) MUST equal the original script word-for-word.
 3. Do NOT summarize. Do NOT add commentary. Do NOT reorder words.
 4. **NEVER split a sentence in the middle.** A sentence ends ONLY at a period (.), question mark (?), or exclamation mark (!). Commas, semicolons, dashes, and colons are NOT sentence boundaries — they MUST stay inside one scene.
-5. **TARGET SCENE LENGTH: 14–28 words, ~80–170 characters, ~6–11 seconds of narration.**
-6. **HARD MAX: 34 words / 210 characters / ~14 seconds per scene.** Going past 14 s of audio means the Grok clip can't fully cover the scene with motion. If a single sentence is naturally longer than 34 words, give it its own scene (rule 4 takes priority — never split mid-sentence).
-7. **Prefer 1–2 sentences per scene.** Two short sentences sharing a beat is fine. Mature documentary pacing — don't over-fragment.
+5. **TARGET SCENE LENGTH: 8–15 words, ~50–90 characters, ~3.5–6 seconds of narration.**
+6. **HARD MAX: 18 words / 110 characters / ~7 seconds per scene.** Past 7 s the Grok ~6s clip can't cover the audio. If a single sentence is naturally longer than 18 words, give it its own scene (rule 4 takes priority — never split mid-sentence).
+7. **Prefer 1 short sentence per scene.** Two very short clauses sharing a beat are OK if both under 8 words combined. Documentary pacing — but tighter than long-form because of the 6-second clip ceiling.
 8. Section headings ("Part one — The Blue Zone secret.") get their own short scene.
-9. Long single sentences are OK as standalone scenes, but flag them — they will look near-frozen at the end.
+9. Long single sentences are OK as standalone scenes, but flag them — they may look near-frozen at the end.
 
 For EACH scene, return a JSON object with:
 - "text": the exact verbatim slice of the script (no edits, no punctuation changes).
@@ -45,11 +46,11 @@ For EACH scene, return a JSON object with:
   • No cartoon/anime/illustrative/painterly styling.
   • No fantasy, sci-fi, futuristic tech, hospital scenes, sick or frail bodies.
   • No clickbait visuals (huge bold "5" digits, before/after shock, etc.).
-- "duration_hint_sec": approximate audio length (number, 4–14).
+- "duration_hint_sec": approximate audio length (number, 3–7).
 
 Return a STRICTLY valid JSON array — no markdown, no explanations.
 
-For a ~1500-word script expect ~55–85 scenes. For a ~3000-word script expect ~120–170 scenes. If any "text" field is longer than 210 characters, you missed the limit — recount and re-split.`,
+For a ~1500-word script expect ~100–150 scenes. For a ~3000-word script expect ~220–300 scenes. If any "text" field is longer than 110 characters, you missed the limit — recount and re-split.`,
 
   image_prompt: `documentary photography, photoreal, NatGeo / BBC Earth cinematography style, golden-hour Mediterranean light, warm earth tones, natural color grading, soft contrast, 35mm full-frame, shallow depth of field on close-ups, wide cinematic landscape for environments, sharp focus, 16:9 aspect ratio, no text overlays, no watermarks, no logos, no captions, no recognizable faces in close-up, no young people, no children, no sick or hospitalized bodies, no cartoon stylization, no painterly artwork, no fantasy elements, no sci-fi, no clickbait graphics`,
 

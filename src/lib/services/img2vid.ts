@@ -93,20 +93,23 @@ async function labs69Img2Vid(
   // reuses the cached image instead of making us re-upload bytes.
   const usableJobId = imageProvider === "69labs" ? providerJobId : undefined;
 
-  // Veo 3.1 Fast does NOT support custom duration. For other models (Grok etc.)
-  // either use the explicit ANIMATION_DURATION setting, OR auto-fit to the
-  // scene's narration length (clamped to Grok's 6–14 s sweet spot).
-  const supportsDuration = model && !/^veo/i.test(model);
+  // Models that DO NOT accept a `duration` parameter through 69labs:
+  //  - Veo 3.1 Fast (always returns ~6s, ignores duration)
+  //  - Grok Imagine Video (69labs returns HTTP 400 "Grok Video does not
+  //    support duration selection" if we send duration at all)
+  // Other models (Kling etc.) accept duration — pass through.
+  const supportsDuration = model && !/^veo/i.test(model) && !/^grok/i.test(model);
   let duration: string | undefined;
   if (supportsDuration) {
     if (durationSetting) {
       duration = durationSetting;
     } else {
-      // Auto-fit to scene narration; clamp to Grok's supported range.
-      const sceneDur = Math.max(6, Math.min(14, Math.ceil(scene.duration_hint_sec || 8)));
+      // Auto-fit to scene narration; clamp to a generic safe range for non-Grok/non-Veo models.
+      const sceneDur = Math.max(4, Math.min(10, Math.ceil(scene.duration_hint_sec || 5)));
       duration = String(sceneDur);
     }
   }
+  // If the model is Grok/Veo, duration stays undefined → 69labs uses its fixed default (~6s).
 
   // Retry: timeout → cancel → retry. Same pattern as image-gen.
   const MAX_ATTEMPTS = 3;

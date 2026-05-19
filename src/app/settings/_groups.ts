@@ -222,8 +222,8 @@ export const ALL_GROUPS: Group[] = [
       },
       {
         key: "ANIMATION_DURATION",
-        desc: "Length of each Grok clip in seconds. LEAVE EMPTY for auto-fit — pipeline derives the duration from each scene's narration length (clamped 6–14s for Grok). Set an explicit number to force every clip to that length (e.g. `10` for uniform 10-second clips). Veo 3.1 Fast ignores this and always returns ~6s.",
-        examples: "empty = auto-fit to scene  ·  6–14 = explicit duration  ·  Grok supports 6–15s",
+        desc: "Length of each clip in seconds. IGNORED for Grok (`grok-imagine-video`) and Veo — 69labs returns 'does not support duration selection' if we send the param, so we omit it and the platform returns its fixed ~6s clip. This setting only applies to other providers (Kling via Replicate/fal). For Grok-based runs, scene split should target ~4–6s narration to match the fixed clip length.",
+        examples: "empty = provider default  ·  4–10 = explicit (Kling/Replicate only)",
       },
       {
         key: "ANIMATION_KEEP_VEO_AUDIO",
