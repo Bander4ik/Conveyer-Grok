@@ -1,6 +1,10 @@
 // Restores native .node binaries that Windows Defender or other antivirus
 // products sometimes truncate / quarantine after `npm install`.
 //
+// This problem is Windows-specific (Defender flags native binaries).
+// On macOS / Linux `npm install` produces working binaries — this script
+// no-ops there.
+//
 // Runs as `postinstall` (auto) and can also be invoked manually:
 //   npm run fix-bins
 //
@@ -8,7 +12,15 @@
 // expected minSize sanity threshold, copy from the first working source path.
 // If no source is found, log a warning and continue — install still succeeds.
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+
+// On non-Windows platforms this script has nothing to do — npm install
+// produces clean native binaries and there's no antivirus eating them.
+if (os.platform() !== "win32") {
+  console.log("[fix-bins] Non-Windows platform — skipping (antivirus issue is Windows-only).");
+  process.exit(0);
+}
 
 const TARGETS = [
   {
