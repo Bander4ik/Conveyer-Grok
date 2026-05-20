@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { ThemeToggle } from "./_theme-toggle";
 
 interface NavItem {
   href: string;
@@ -206,16 +207,13 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div
-        style={{
-          marginTop: "auto",
-          padding: "12px 10px 2px",
-          borderTop: "1px solid var(--border)",
-          fontSize: 11,
-          color: "var(--fg-faint)",
-        }}
-      >
-        v0.1 · runs locally
+      <div style={{ marginTop: "auto", paddingTop: 14 }}>
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+          <ThemeToggle />
+          <div style={{ fontSize: 11, color: "var(--fg-faint)", padding: "10px 10px 2px" }}>
+            v0.1 · runs locally
+          </div>
+        </div>
       </div>
     </aside>
   );

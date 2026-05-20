@@ -7,9 +7,15 @@ export const metadata = {
   description: "Local pipeline platform for faceless AI YouTube videos — Grok video + HeyGen voice.",
 };
 
+// Applied before first paint so the chosen theme doesn't flash (anti-FOUC).
+const themeScript = `try{if(localStorage.getItem('theme')==='light'){document.documentElement.setAttribute('data-theme','light');}}catch(e){}`;
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body>
         <div style={{ display: "flex", minHeight: "100vh" }}>
           <Sidebar />
