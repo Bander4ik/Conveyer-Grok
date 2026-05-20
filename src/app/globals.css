@@ -7,29 +7,29 @@
    ─────────────────────────────────────────────────────────────────────── */
 
 :root {
-  /* Surfaces — warm dark */
-  --bg: #0d0b09;
-  --bg-deep: #0a0807;
-  --surface: #1a1612;
-  --surface-2: #221c16;
-  --surface-hover: #2a221b;
-  --field: #120f0b;
+  /* Surfaces — neutral dark */
+  --bg: #0b0b0d;
+  --bg-deep: #08080a;
+  --surface: #141416;
+  --surface-2: #1c1c1f;
+  --surface-hover: #232327;
+  --field: #0f0f11;
 
-  /* Borders — warm */
-  --border: #2c261f;
-  --border-strong: #3b3329;
+  /* Borders */
+  --border: #26262a;
+  --border-strong: #35353b;
 
-  /* Text — warm white */
-  --fg: #f4f1ea;
-  --fg-muted: #a59d8f;
-  --fg-faint: #6d6457;
+  /* Text */
+  --fg: #f2f2f3;
+  --fg-muted: #9a9aa0;
+  --fg-faint: #636368;
 
-  /* Accent — warm amber */
-  --accent: #f59e42;
-  --accent-hover: #ffb45f;
-  --accent-press: #e0852a;
-  --accent-soft: rgba(245, 158, 66, 0.14);
-  --accent-ring: rgba(245, 158, 66, 0.38);
+  /* Accent — red */
+  --accent: #e23636;
+  --accent-hover: #ee4b4b;
+  --accent-press: #c62a2a;
+  --accent-soft: rgba(226, 54, 54, 0.14);
+  --accent-ring: rgba(226, 54, 54, 0.38);
 
   /* Semantic */
   --success: #4ade80;
@@ -164,8 +164,8 @@ code,
 
 .btn {
   background: var(--accent);
-  color: #241a0c;
-  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  color: #fff;
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
 .btn:hover:not(:disabled) {
   background: var(--accent-hover);
