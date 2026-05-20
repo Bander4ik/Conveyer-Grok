@@ -6,7 +6,7 @@ Paste a script. The system splits it into scenes, generates voiceover for each s
 
 Everything runs locally on your computer through a simple web interface. Finished runs auto-upload to your Google Drive (optional), and the AI can reuse clips from past runs when scenes look similar — so the more videos you make, the cheaper and faster each new one becomes.
 
-Multiple prompt presets supported — save a different system prompt per channel and switch between them on each run.
+Channel profiles supported — save a per-channel bundle (scene-split prompt, HeyGen voice, motion style) and switch between them in one click on each run.
 
 ---
 

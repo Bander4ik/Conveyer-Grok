@@ -13,9 +13,9 @@ After install, you open `http://localhost:3000` in your browser and see the Conv
 | **New run** | Where you paste a script and start making a video |
 | **Run history** | All your past runs — status, final video, logs |
 | **Library** | Browse clips from past runs on Google Drive (if Drive sync is on) |
-| **Prompts** | Manage prompt presets (one per channel) + default prompts |
-| **Keys & Settings** | API keys, Drive credentials, basic settings |
-| **Advanced settings** | TTS fine-tuning, FFmpeg options, concurrency, model choice |
+| **Channels & Prompts** | Channel profiles (one per channel) + default prompts |
+| **Keys & Settings** | API keys, Drive credentials |
+| **Advanced** | TTS, video model, FFmpeg options, concurrency |
 
 ---
 
@@ -34,20 +34,20 @@ Click **Reveal secret values** if you need to edit existing keys (they're masked
 
 Click **Save all changes**. You should see green confirmation.
 
-### Step 2 — (Optional but recommended) Set up a prompt preset
+### Step 2 — (Optional but recommended) Set up a channel profile
 
-Default prompts work, but you'll get much better, more on-brand results with a preset tuned to your channel niche.
+Default prompts work, but you'll get much better, more on-brand results with a channel profile tuned to your niche.
 
-Go to **Prompts** → **Add new preset** → name it (e.g. *"Channel Name — niche style"*) → paste your system prompt content → **Save**.
+Go to **Channels & Prompts** → **Add new channel** → fill in the channel name, optionally a HeyGen voice_id (this channel's own voice) and a description, then paste the Scene Split prompt → **Add channel**.
 
-See [PROMPT-GUIDE.md](./PROMPT-GUIDE.md) for what to put in the preset and a full worked example.
+See [PROMPT-GUIDE.md](./PROMPT-GUIDE.md) for what to put in the Scene Split prompt and a full worked example.
 
 ### Step 3 — Paste script, run pipeline
 
 Go to **New run**.
 
 1. (Optional) Give the run a title — useful for finding it later in Run history
-2. **Prompt preset** dropdown → pick the preset for this channel. Leave at *"Default scene_split prompt"* to use the global default
+2. **Channel** dropdown → pick the channel profile for this video. Its scene-split prompt, voice and motion all apply automatically. Leave at *"Default — no channel profile"* to use the global defaults
 3. **Script** textarea → paste your full narrator script. Anything from 30 seconds to 30 minutes works.
 
 Below the script box you'll see live stats: word count, estimated duration, estimated scenes, estimated total generation time.
@@ -107,19 +107,23 @@ This pays off quickly. The more videos you make, the more matches the library fi
 
 ---
 
-## Prompt presets — one preset per channel
+## Channel profiles — one profile per channel
 
-If you run multiple YouTube channels with different styles, save a preset for each:
+If you run multiple YouTube channels with different styles, save a profile for each on the **Channels & Prompts** page. Each profile bundles:
 
-- *"Channel A — Blue Zone documentary"* — Mediterranean visuals, dignified pacing
-- *"Channel B — Tech explainer"* — futuristic visuals, kinetic motion
-- *"Channel C — Cooking how-to"* — kitchen close-ups, warm food shots
+- **Scene Split prompt** — the visual rules for this channel (required)
+- **HeyGen voice_id** — this channel's own voice (optional — empty uses the global voice)
+- **Animation Motion override** — this channel's motion style (optional — empty uses the global default)
+- **Description** — a note for your own reference (optional)
 
-Each preset can also include an **Animation Motion override** — different motion style per channel (slow contemplative vs energetic fast). Leave it empty to inherit the global default.
+Examples:
 
-On the New Run page, pick which preset to use from the dropdown. The run "remembers" which preset it used (snapshot is saved on the run), so deleting a preset later doesn't break old runs.
+- *"Blue Zone Way"* — Mediterranean visuals, calm voice, dignified slow motion
+- *"Tech Explainer"* — futuristic visuals, energetic voice, kinetic motion
 
-See [PROMPT-GUIDE.md](./PROMPT-GUIDE.md) for how to write a preset.
+On the New Run page, pick the channel from the **Channel** dropdown — the prompt, voice and motion all apply in one click. The run snapshots which profile it used, so deleting a profile later doesn't break old runs.
+
+See [PROMPT-GUIDE.md](./PROMPT-GUIDE.md) for how to write the Scene Split prompt.
 
 ---
 

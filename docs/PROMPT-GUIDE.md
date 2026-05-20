@@ -1,8 +1,10 @@
-# Prompt guide — how to write a Conveyer Grok preset
+# Prompt guide — how to write a channel's Scene Split prompt
 
-This guide explains how to write a **Prompt Preset** — the system prompt that tells the LLM (Gemini) how to slice your script into scenes and what kind of visuals to ask Grok for.
+This guide explains how to write a **Scene Split prompt** — the system prompt that tells the LLM (Gemini) how to slice your script into scenes and what kind of visuals to ask Grok for. It's the core of every **channel profile**.
 
-You write a preset ONCE per channel (or per video style) on the `/prompts` page, then pick it from a dropdown on every New Run. No need to write per-scene prompts manually — Gemini generates them automatically from the preset's rules + your script.
+You write it ONCE per channel on the **Channels & Prompts** page (Add new channel), then pick that channel from a dropdown on every New Run. No need to write per-scene prompts manually — Gemini generates them automatically from your channel's rules + your script.
+
+Throughout this guide, "preset" and "channel profile" mean the same thing — a saved per-channel bundle whose main piece is the Scene Split prompt described here.
 
 ---
 
