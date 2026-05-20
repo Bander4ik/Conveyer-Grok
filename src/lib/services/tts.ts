@@ -15,11 +15,16 @@ export interface TtsResult {
 /**
  * Synthesizes one scene. Supports HeyGen (default for Conveyer Grok), 69labs,
  * ElevenLabs (direct), OpenAI TTS. Each file is sceneN.mp3 in the scene directory.
+ *
+ * `options.voiceOverride` — when a channel profile sets its own HeyGen voice_id,
+ * the pipeline passes it here so that channel's runs use that voice instead of
+ * the global HEYGEN_VOICE_ID setting. Empty/null → use the global setting.
  */
 export async function synthesizeScene(
   runId: string,
   scene: Scene,
-  outDir: string
+  outDir: string,
+  options: { voiceOverride?: string | null } = {}
 ): Promise<TtsResult> {
   const provider = (getSetting("TTS_PROVIDER") || "heygen").toLowerCase();
   const fileName = `scene_${String(scene.index).padStart(3, "0")}.mp3`;
@@ -31,7 +36,7 @@ export async function synthesizeScene(
   });
 
   if (provider === "heygen") {
-    await heygenTts(runId, scene.text, filePath);
+    await heygenTts(runId, scene.text, filePath, options.voiceOverride);
   } else if (provider === "69labs") {
     await labs69Tts(runId, scene.text, filePath);
   } else if (provider === "elevenlabs") {
@@ -136,13 +141,22 @@ function clamp(n: number, min: number, max: number): number {
  * `POST /v1/audio/text_to_speech` endpoint with the same body shape.
  * (HeyGen has shuffled this across API versions; both endpoints currently exist.)
  */
-async function heygenTts(runId: string, text: string, outPath: string) {
+async function heygenTts(
+  runId: string,
+  text: string,
+  outPath: string,
+  voiceOverride?: string | null
+) {
   const apiKey = getSetting("HEYGEN_API_KEY");
   if (!apiKey) throw new Error("HEYGEN_API_KEY is not set — paste it in /settings");
-  const voiceId = getSetting("HEYGEN_VOICE_ID");
+  // A channel profile's voice_id (voiceOverride) wins over the global setting.
+  const voiceId =
+    voiceOverride && voiceOverride.trim().length > 0
+      ? voiceOverride.trim()
+      : getSetting("HEYGEN_VOICE_ID");
   if (!voiceId)
     throw new Error(
-      "HEYGEN_VOICE_ID is not set — pick a voice in HeyGen dashboard and paste the voice_id in /settings"
+      "No HeyGen voice_id available — set HEYGEN_VOICE_ID in /settings, or add a voice_id to the channel profile in /prompts"
     );
 
   // Optional speed control — reuse the global TTS_SPEED setting (clamped to HeyGen's 0.5–1.5).

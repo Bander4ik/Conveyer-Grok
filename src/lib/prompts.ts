@@ -87,10 +87,12 @@ export function seedPromptDefaults() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Prompt Presets — user-defined named scene_split prompts.
-// One preset per YouTube channel / video style. The user picks one on the
-// New Run page; if none picked, the pipeline falls back to the built-in
-// scene_split prompt above.
+// Channel Profiles — user-defined per-channel bundles.
+// (DB table is named "prompt_presets" for legacy reasons.)
+// Each profile carries: a scene_split prompt, optional animation-motion
+// override, optional image-prompt override, optional per-channel HeyGen
+// voice_id, and an optional human description. The user picks one on the
+// New Run page; anything left empty falls back to global defaults/settings.
 // ─────────────────────────────────────────────────────────────────────────
 
 export interface PromptPreset {
@@ -98,28 +100,41 @@ export interface PromptPreset {
   name: string;
   /** scene_split prompt (required) */
   content: string;
+  /** human-readable note about the channel (optional) */
+  description: string | null;
   /** animation_motion override (optional — NULL means fall back to global default) */
   animation_motion: string | null;
   /** image_prompt override (optional — currently unused since Conveyer Grok is video-only) */
   image_prompt: string | null;
+  /** per-channel HeyGen voice_id (optional — NULL means use the global HEYGEN_VOICE_ID setting) */
+  heygen_voice_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
+/** Fields accepted when creating/updating a channel profile. */
+export interface PromptPresetInput {
+  name: string;
+  content: string;
+  description?: string | null;
+  animation_motion?: string | null;
+  image_prompt?: string | null;
+  heygen_voice_id?: string | null;
+}
+
+const PRESET_COLS =
+  "id, name, content, description, animation_motion, image_prompt, heygen_voice_id, created_at, updated_at";
+
 const listPresetsStmt = db.prepare(
-  "SELECT id, name, content, animation_motion, image_prompt, created_at, updated_at FROM prompt_presets ORDER BY name COLLATE NOCASE ASC"
+  `SELECT ${PRESET_COLS} FROM prompt_presets ORDER BY name COLLATE NOCASE ASC`
 );
-const getPresetStmt = db.prepare(
-  "SELECT id, name, content, animation_motion, image_prompt, created_at, updated_at FROM prompt_presets WHERE id = ?"
-);
-const getPresetByNameStmt = db.prepare(
-  "SELECT id, name, content, animation_motion, image_prompt, created_at, updated_at FROM prompt_presets WHERE name = ?"
-);
+const getPresetStmt = db.prepare(`SELECT ${PRESET_COLS} FROM prompt_presets WHERE id = ?`);
+const getPresetByNameStmt = db.prepare(`SELECT ${PRESET_COLS} FROM prompt_presets WHERE name = ?`);
 const createPresetStmt = db.prepare(
-  "INSERT INTO prompt_presets (name, content, animation_motion, image_prompt) VALUES (?, ?, ?, ?)"
+  "INSERT INTO prompt_presets (name, content, description, animation_motion, image_prompt, heygen_voice_id) VALUES (?, ?, ?, ?, ?, ?)"
 );
 const updatePresetStmt = db.prepare(
-  "UPDATE prompt_presets SET name = ?, content = ?, animation_motion = ?, image_prompt = ?, updated_at = datetime('now') WHERE id = ?"
+  "UPDATE prompt_presets SET name = ?, content = ?, description = ?, animation_motion = ?, image_prompt = ?, heygen_voice_id = ?, updated_at = datetime('now') WHERE id = ?"
 );
 const deletePresetStmt = db.prepare("DELETE FROM prompt_presets WHERE id = ?");
 
@@ -144,42 +159,35 @@ function normalizeOptional(s: string | null | undefined): string | null {
   return trimmed.length > 0 ? s : null;
 }
 
-export function createPromptPreset(
-  name: string,
-  content: string,
-  animationMotion?: string | null,
-  imagePrompt?: string | null
-): number {
-  const trimmedName = name.trim();
-  if (!trimmedName) throw new Error("Preset name cannot be empty");
-  if (!content.trim()) throw new Error("Preset scene_split content cannot be empty");
+export function createPromptPreset(input: PromptPresetInput): number {
+  const trimmedName = input.name.trim();
+  if (!trimmedName) throw new Error("Channel name cannot be empty");
+  if (!input.content.trim()) throw new Error("Channel scene_split prompt cannot be empty");
   const result = createPresetStmt.run(
     trimmedName,
-    content,
-    normalizeOptional(animationMotion),
-    normalizeOptional(imagePrompt)
+    input.content,
+    normalizeOptional(input.description),
+    normalizeOptional(input.animation_motion),
+    normalizeOptional(input.image_prompt),
+    normalizeOptional(input.heygen_voice_id)
   );
   return Number(result.lastInsertRowid);
 }
 
-export function updatePromptPreset(
-  id: number,
-  name: string,
-  content: string,
-  animationMotion?: string | null,
-  imagePrompt?: string | null
-): void {
-  const trimmedName = name.trim();
-  if (!trimmedName) throw new Error("Preset name cannot be empty");
-  if (!content.trim()) throw new Error("Preset scene_split content cannot be empty");
+export function updatePromptPreset(id: number, input: PromptPresetInput): void {
+  const trimmedName = input.name.trim();
+  if (!trimmedName) throw new Error("Channel name cannot be empty");
+  if (!input.content.trim()) throw new Error("Channel scene_split prompt cannot be empty");
   const result = updatePresetStmt.run(
     trimmedName,
-    content,
-    normalizeOptional(animationMotion),
-    normalizeOptional(imagePrompt),
+    input.content,
+    normalizeOptional(input.description),
+    normalizeOptional(input.animation_motion),
+    normalizeOptional(input.image_prompt),
+    normalizeOptional(input.heygen_voice_id),
     id
   );
-  if (result.changes === 0) throw new Error(`Preset id=${id} not found`);
+  if (result.changes === 0) throw new Error(`Channel profile id=${id} not found`);
 }
 
 export function deletePromptPreset(id: number): void {

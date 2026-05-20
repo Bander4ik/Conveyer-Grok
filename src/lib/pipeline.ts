@@ -15,7 +15,7 @@ import { downloadReusedClip } from "./services/reuse";
 
 const getReuseMapStmt = db.prepare("SELECT reuse_map_json FROM runs WHERE id = ?");
 const getPresetSnapshotStmt = db.prepare(
-  "SELECT preset_content, preset_animation_motion FROM runs WHERE id = ?"
+  "SELECT preset_content, preset_animation_motion, preset_voice_id FROM runs WHERE id = ?"
 );
 import { checkCancelled, clearCancelled, CancelledError } from "./cancellation";
 
@@ -35,15 +35,20 @@ export async function runPipeline(runId: string, script: string) {
     updateRun.run("running", null, runId);
     log(runId, "info", `Pipeline started · folder: ${path.basename(runDir)}`, { stage: "pipeline" });
 
-    // 1. Split script into scenes — using a chosen Prompt Preset if the user
+    // 1. Split script into scenes — using a chosen channel profile if the user
     //    picked one on the New Run page (snapshot is stored on the run row).
-    //    `preset_animation_motion` (if non-null) overrides the Animation Motion
-    //    suffix later in the loop when animating each scene.
+    //    `preset_animation_motion` overrides the Animation Motion suffix and
+    //    `preset_voice_id` overrides the HeyGen voice — both per channel.
     const presetRow = getPresetSnapshotStmt.get(runId) as
-      | { preset_content: string | null; preset_animation_motion: string | null }
+      | {
+          preset_content: string | null;
+          preset_animation_motion: string | null;
+          preset_voice_id: string | null;
+        }
       | undefined;
     const overridePrompt = presetRow?.preset_content ?? undefined;
     const motionOverride = presetRow?.preset_animation_motion ?? null;
+    const voiceOverride = presetRow?.preset_voice_id ?? null;
     const scenes = await splitScript(runId, script, overridePrompt);
     checkCancelled(runId);
     fs.writeFileSync(path.join(runDir, "scenes.json"), JSON.stringify(scenes, null, 2), "utf-8");
@@ -116,7 +121,7 @@ export async function runPipeline(runId: string, script: string) {
           // Drive in parallel with TTS — no quota consumed, much faster.
           const reuseFileId = reuseMap[String(scene.index)];
           const [audio, videoPath] = await Promise.all([
-            limitTts(() => synthesizeScene(runId, scene, audioDir)),
+            limitTts(() => synthesizeScene(runId, scene, audioDir, { voiceOverride })),
             reuseFileId
               ? downloadReusedClip(runId, scene, reuseFileId, animDir)
               : limitAnim(() => animateScene(runId, scene, null, animDir, { motionOverride })),

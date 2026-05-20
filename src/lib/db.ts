@@ -35,18 +35,24 @@ db.exec(`
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
-  -- User-defined named presets for the prompt bundle (scene_split required,
-  -- animation_motion + image_prompt optional). Lets the user keep one preset
-  -- per YouTube channel (or per video style) and switch between them on the
-  -- New Run page in a single click. Optional fields fall back to the global
-  -- Default prompts when NULL.
-  -- The "content" column is the scene_split prompt (legacy column name).
+  -- Channel profiles (table name "prompt_presets" is legacy). Each row is a
+  -- full per-channel bundle the user picks on the New Run page in one click:
+  --   name             — channel name
+  --   description      — optional human note about the channel
+  --   content          — scene_split system prompt (legacy column name)
+  --   animation_motion — optional motion-style override
+  --   image_prompt     — optional image-style override (unused in video-only)
+  --   heygen_voice_id  — optional per-channel HeyGen voice; overrides the
+  --                      global HEYGEN_VOICE_ID setting for runs on this channel
+  -- Optional fields fall back to global defaults / settings when NULL.
   CREATE TABLE IF NOT EXISTS prompt_presets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     content TEXT NOT NULL,
+    description TEXT,
     animation_motion TEXT,
     image_prompt TEXT,
+    heygen_voice_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -102,8 +108,11 @@ tryAddColumn("runs", "preset_name TEXT");
 tryAddColumn("runs", "preset_content TEXT");
 tryAddColumn("runs", "preset_animation_motion TEXT");
 tryAddColumn("runs", "preset_image_prompt TEXT");
+tryAddColumn("runs", "preset_voice_id TEXT");
 // Backfill for older prompt_presets rows (created before these columns existed)
 tryAddColumn("prompt_presets", "animation_motion TEXT");
 tryAddColumn("prompt_presets", "image_prompt TEXT");
+tryAddColumn("prompt_presets", "description TEXT");
+tryAddColumn("prompt_presets", "heygen_voice_id TEXT");
 
 export default db;

@@ -30,8 +30,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   let body: {
     name?: string;
     content?: string;
+    description?: string | null;
     animation_motion?: string | null;
     image_prompt?: string | null;
+    heygen_voice_id?: string | null;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -44,15 +46,22 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   if (!content.trim()) return NextResponse.json({ error: "content is required" }, { status: 400 });
 
   try {
-    updatePromptPreset(id, name, content, body.animation_motion, body.image_prompt);
+    updatePromptPreset(id, {
+      name,
+      content,
+      description: body.description,
+      animation_motion: body.animation_motion,
+      image_prompt: body.image_prompt,
+      heygen_voice_id: body.heygen_voice_id,
+    });
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.toLowerCase().includes("unique")) {
-      return NextResponse.json({ error: `A preset named "${name}" already exists` }, { status: 409 });
+      return NextResponse.json({ error: `A channel named "${name}" already exists` }, { status: 409 });
     }
     if (msg.includes("not found")) {
-      return NextResponse.json({ error: "Preset not found" }, { status: 404 });
+      return NextResponse.json({ error: "Channel profile not found" }, { status: 404 });
     }
     return NextResponse.json({ error: msg }, { status: 500 });
   }

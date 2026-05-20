@@ -12,8 +12,10 @@ export async function POST(req: Request) {
   let body: {
     name?: string;
     content?: string;
+    description?: string | null;
     animation_motion?: string | null;
     image_prompt?: string | null;
+    heygen_voice_id?: string | null;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -26,13 +28,20 @@ export async function POST(req: Request) {
   if (!content.trim()) return NextResponse.json({ error: "content is required" }, { status: 400 });
 
   try {
-    const id = createPromptPreset(name, content, body.animation_motion, body.image_prompt);
+    const id = createPromptPreset({
+      name,
+      content,
+      description: body.description,
+      animation_motion: body.animation_motion,
+      image_prompt: body.image_prompt,
+      heygen_voice_id: body.heygen_voice_id,
+    });
     return NextResponse.json({ ok: true, id });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     // SQLite UNIQUE constraint on name
     if (msg.toLowerCase().includes("unique")) {
-      return NextResponse.json({ error: `A preset named "${name}" already exists` }, { status: 409 });
+      return NextResponse.json({ error: `A channel named "${name}" already exists` }, { status: 409 });
     }
     return NextResponse.json({ error: msg }, { status: 500 });
   }
