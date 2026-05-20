@@ -81,9 +81,7 @@ export default function LibraryPage() {
     return runs.filter((r) => {
       const inTitle = (r.run_title || r.folder_name).toLowerCase().includes(q);
       const inClips = r.clips.some(
-        (c) =>
-          c.scene_text.toLowerCase().includes(q) ||
-          c.visual_prompt.toLowerCase().includes(q)
+        (c) => c.scene_text.toLowerCase().includes(q) || c.visual_prompt.toLowerCase().includes(q)
       );
       return inTitle || inClips;
     });
@@ -91,20 +89,18 @@ export default function LibraryPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 4 }}>Library</h1>
-      <p style={{ color: "#8a8aa0", marginBottom: 16, lineHeight: 1.6 }}>
-        Every run you've saved to Google Drive. AI uses this library to find clips it can reuse
-        when you start a new run with similar scenes.
+      <h1>Library</h1>
+      <p className="muted" style={{ marginBottom: 20, fontSize: 14, lineHeight: 1.6 }}>
+        Every run you&apos;ve saved to Google Drive. The AI uses this library to find clips it can
+        reuse when you start a new run with similar scenes.
       </p>
 
-      {loading && <div style={{ color: "#8a8aa0" }}>Loading…</div>}
+      {loading && <div className="muted">Loading…</div>}
 
       {!loading && drive && !drive.connected && (
-        <div className="card" style={{ borderColor: "#3a3a4a" }}>
-          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6, color: "#ffce4d" }}>
-            ⚠ Google Drive is not connected
-          </div>
-          <p style={{ color: "#8a8aa0", fontSize: 13, marginBottom: 10, lineHeight: 1.5 }}>
+        <div className="card">
+          <h2 style={{ marginBottom: 6, color: "var(--warning)" }}>Google Drive not connected</h2>
+          <p className="muted" style={{ fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>
             Connect your Google account in Settings — saved runs will appear here automatically.
           </p>
           <a className="btn" href="/settings">
@@ -114,19 +110,11 @@ export default function LibraryPage() {
       )}
 
       {!loading && drive?.connected && error && (
-        <div className="card" style={{ borderColor: "#5a3a3a", marginBottom: 12 }}>
-          <div style={{ color: "#ff6d6d", fontWeight: 600, fontSize: 13 }}>
-            ❌ Couldn't load library
+        <div className="card" style={{ borderColor: "rgba(248,113,113,0.35)", marginBottom: 12 }}>
+          <div style={{ color: "var(--danger)", fontWeight: 600, fontSize: 13 }}>
+            Couldn&apos;t load library
           </div>
-          <div
-            style={{
-              color: "#9090a8",
-              fontSize: 11,
-              marginTop: 6,
-              fontFamily: "ui-monospace, monospace",
-              whiteSpace: "pre-wrap",
-            }}
-          >
+          <div className="mono" style={{ color: "var(--fg-muted)", fontSize: 11, marginTop: 6, whiteSpace: "pre-wrap" }}>
             {error}
           </div>
         </div>
@@ -134,17 +122,17 @@ export default function LibraryPage() {
 
       {!loading && drive?.connected && !error && runs && runs.length === 0 && (
         <div className="card">
-          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>📭 Library is empty</div>
-          <p style={{ color: "#8a8aa0", fontSize: 13, lineHeight: 1.5 }}>
-            Run the pipeline — finished runs auto-upload to Drive (if you toggled
-            "Auto-upload finished runs to Drive" in Settings). Each new run shows up here.
+          <h2 style={{ marginBottom: 6 }}>Library is empty</h2>
+          <p className="muted" style={{ fontSize: 13, lineHeight: 1.5, margin: 0 }}>
+            Run the pipeline — finished runs auto-upload to Drive (if &quot;Auto-upload finished runs
+            to Drive&quot; is on in Settings). Each new run shows up here.
           </p>
         </div>
       )}
 
       {!loading && drive?.connected && runs && runs.length > 0 && (
         <>
-          <div style={{ marginBottom: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ marginBottom: 14, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <input
               className="input"
               placeholder="Search by title or scene text…"
@@ -152,7 +140,7 @@ export default function LibraryPage() {
               onChange={(e) => setQuery(e.target.value)}
               style={{ maxWidth: 380, flex: 1 }}
             />
-            <span style={{ color: "#8a8aa0", fontSize: 13 }}>
+            <span className="muted" style={{ fontSize: 13 }}>
               {filtered.length === runs.length
                 ? `${runs.length} run${runs.length === 1 ? "" : "s"}`
                 : `${filtered.length} of ${runs.length} runs`}
@@ -174,41 +162,33 @@ export default function LibraryPage() {
                     }}
                   >
                     <div style={{ flex: 1, minWidth: 200 }}>
-                      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
+                      <div style={{ fontWeight: 650, fontSize: 14.5, marginBottom: 3 }}>
                         {r.run_title || r.folder_name}
                       </div>
-                      <div style={{ color: "#8a8aa0", fontSize: 12 }}>
-                        {r.created_at && (
-                          <span>
-                            {new Date(r.created_at).toLocaleString()} ·{" "}
-                          </span>
-                        )}
+                      <div className="faint" style={{ fontSize: 12 }}>
+                        {r.created_at && <span>{new Date(r.created_at).toLocaleString()} · </span>}
                         {r.uploaded_clip_count} clip{r.uploaded_clip_count === 1 ? "" : "s"}
-                        {r.scene_count !== r.uploaded_clip_count && (
-                          <span> / {r.scene_count} scenes</span>
-                        )}
+                        {r.scene_count !== r.uploaded_clip_count && <span> / {r.scene_count} scenes</span>}
                         {r.settings.animation_model && (
                           <span>
-                            {" "}· {r.settings.animation_model}{" "}
-                            {r.settings.video_resolution && <>({r.settings.video_resolution})</>}
+                            {" "}· {r.settings.animation_model}
+                            {r.settings.video_resolution && ` (${r.settings.video_resolution})`}
                           </span>
                         )}
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <button
-                        className="btn-secondary"
+                        className="btn-secondary btn-sm"
                         onClick={() => setOpenRunId(isOpen ? null : r.drive_folder_id)}
-                        style={{ fontSize: 12 }}
                       >
                         {isOpen ? "Hide clips" : `View ${r.uploaded_clip_count} clips`}
                       </button>
                       <a
-                        className="btn-secondary"
+                        className="btn-secondary btn-sm"
                         href={r.drive_folder_link}
                         target="_blank"
                         rel="noopener noreferrer"
-                        style={{ fontSize: 12 }}
                       >
                         Open in Drive
                       </a>
@@ -218,35 +198,27 @@ export default function LibraryPage() {
                   {isOpen && (
                     <div
                       style={{
-                        marginTop: 12,
-                        paddingTop: 10,
-                        borderTop: "1px solid #232334",
+                        marginTop: 14,
+                        paddingTop: 12,
+                        borderTop: "1px solid var(--border)",
                         display: "grid",
-                        gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+                        gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))",
                         gap: 10,
                       }}
                     >
                       {r.clips.map((c) => (
-                        <div
-                          key={c.drive_file_id}
-                          style={{
-                            background: "#0f0f17",
-                            border: "1px solid #232334",
-                            borderRadius: 8,
-                            padding: 10,
-                          }}
-                        >
+                        <div key={c.drive_file_id} className="card-inset" style={{ padding: 11 }}>
                           <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 6 }}>
                             Scene {c.index}
                             {c.audio_duration_sec != null && c.audio_duration_sec > 0 && (
-                              <span style={{ color: "#8a8aa0", marginLeft: 6, fontWeight: 400 }}>
+                              <span className="faint" style={{ marginLeft: 6, fontWeight: 400 }}>
                                 {c.audio_duration_sec.toFixed(1)}s audio
                               </span>
                             )}
                           </div>
                           <div
                             style={{
-                              color: "#b8b8c8",
+                              color: "var(--fg-muted)",
                               fontSize: 11,
                               lineHeight: 1.5,
                               marginBottom: 6,
@@ -257,10 +229,10 @@ export default function LibraryPage() {
                             {c.scene_text}
                           </div>
                           <div
+                            className="mono"
                             style={{
-                              color: "#7c5cff",
+                              color: "var(--accent-hover)",
                               fontSize: 10,
-                              fontFamily: "ui-monospace, monospace",
                               marginBottom: 8,
                               maxHeight: 70,
                               overflow: "auto",
@@ -269,12 +241,7 @@ export default function LibraryPage() {
                           >
                             {c.visual_prompt}
                           </div>
-                          <a
-                            href={c.drive_file_link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ color: "#7c5cff", fontSize: 11 }}
-                          >
+                          <a href={c.drive_file_link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11 }}>
                             Open clip in Drive →
                           </a>
                         </div>

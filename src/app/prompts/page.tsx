@@ -18,45 +18,45 @@ const META: { name: string; label: string; help: string; rows: number }[] = [
     name: "scene_split",
     label: "Scene Split — system prompt for Gemini",
     help:
-      "The DEFAULT prompt that instructs the LLM how to slice a script into scenes. Used when a run " +
-      "has no channel selected. Channel profiles above each carry their own scene_split prompt that " +
-      "overrides this default. See docs/PROMPT-GUIDE.md for what a good prompt contains.",
+      "The DEFAULT prompt for slicing a script into scenes. Used when a run has no channel selected. " +
+      "Channel profiles above each carry their own scene_split prompt that overrides this. See docs/PROMPT-GUIDE.md.",
     rows: 16,
   },
   {
     name: "animation_motion",
-    label: "Animation Motion — default motion style for Grok img2vid",
+    label: "Animation Motion — default motion style for Grok",
     help:
-      "Appended to every scene's visual_prompt before being sent to Grok. Tells the video model what " +
-      "kind of motion you want. Used when a run's channel doesn't set its own Animation Motion override.",
+      "Appended to every scene's visual_prompt before being sent to Grok. Used when a run's channel " +
+      "doesn't set its own Animation Motion override.",
     rows: 4,
   },
   {
     name: "image_prompt",
-    label: "Image Style — (currently unused — video-only mode)",
-    help:
-      "Not used in Conveyer Grok — the pipeline is video-only with no image stage. Kept for a possible " +
-      "future image mode. Safe to ignore.",
+    label: "Image Style — (unused — video-only mode)",
+    help: "Not used in Conveyer Grok (video-only, no image stage). Kept for a possible future image mode.",
     rows: 3,
   },
 ];
+
+const labelStyle: React.CSSProperties = { marginTop: 6 };
+
+function optionalNote(text: string) {
+  return <span className="faint" style={{ fontWeight: 400, fontSize: 12 }}>{text}</span>;
+}
 
 export default function PromptsPage() {
   const [values, setValues] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
 
-  // Channel profiles state
   const [presets, setPresets] = useState<PromptPreset[]>([]);
   const [presetError, setPresetError] = useState<string | null>(null);
 
-  // New channel form
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newVoiceId, setNewVoiceId] = useState("");
   const [newContent, setNewContent] = useState("");
   const [newAnimationMotion, setNewAnimationMotion] = useState("");
 
-  // Edit channel form
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
@@ -166,42 +166,37 @@ export default function PromptsPage() {
     await loadPresets();
   }
 
-  const labelStyle: React.CSSProperties = { marginTop: 6, marginBottom: 4 };
-  const optionalNote = (text: string) => (
-    <span style={{ color: "#8a8aa0", fontWeight: 400, fontSize: 12 }}>{text}</span>
-  );
-
   return (
     <div>
-      <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 4 }}>Channels &amp; Prompts</h1>
-      <p style={{ color: "#8a8aa0", marginBottom: 16, lineHeight: 1.6 }}>
-        A <strong>channel profile</strong> bundles everything specific to one YouTube channel —
-        its scene-split prompt, its HeyGen voice, its motion style. Pick a channel on the New Run
-        page and all of it applies in one click. The Default prompts at the bottom are used only
-        when no channel is selected.
+      <h1>Channels &amp; Prompts</h1>
+      <p className="muted" style={{ marginBottom: 20, fontSize: 14, lineHeight: 1.6 }}>
+        A <strong style={{ color: "var(--fg)" }}>channel profile</strong> bundles everything specific
+        to one YouTube channel — its scene-split prompt, HeyGen voice, motion style. Pick a channel on
+        the New Run page and all of it applies in one click. The Default prompts at the bottom are used
+        only when no channel is selected.
       </p>
 
-      {/* ── Channel profiles ────────────────────────────────────────── */}
-      <div className="card" style={{ marginBottom: 24, padding: 16 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>
-          Channels{" "}
-          <span style={{ color: "#8a8aa0", fontWeight: 400, fontSize: 14 }}>({presets.length})</span>
-        </h2>
-        <p style={{ color: "#9090a8", fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>
+      {/* ─── Channels ───────────────────────────────────────────────────── */}
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <h2 style={{ margin: 0 }}>Channels</h2>
+          <span className="badge badge-neutral">{presets.length}</span>
+        </div>
+        <p className="muted" style={{ fontSize: 12.5, marginBottom: 16, lineHeight: 1.55 }}>
           One profile per channel. Required: name + Scene Split prompt. Optional: a HeyGen voice_id
-          (overrides the global voice for runs on this channel), an Animation Motion override, and
-          a description note. Empty optional fields fall back to global defaults.
+          (overrides the global voice), an Animation Motion override, and a description. Empty optional
+          fields fall back to global defaults.
         </p>
 
         {presetError && (
           <div
             style={{
-              background: "#3a1a1a",
-              border: "1px solid #6a2a2a",
-              padding: "8px 12px",
-              borderRadius: 8,
+              background: "var(--danger-soft)",
+              border: "1px solid rgba(248,113,113,0.3)",
+              padding: "9px 12px",
+              borderRadius: "var(--r-sm)",
               marginBottom: 12,
-              color: "#ffb0b0",
+              color: "var(--danger)",
               fontSize: 13,
             }}
           >
@@ -210,7 +205,7 @@ export default function PromptsPage() {
         )}
 
         {presets.length === 0 && (
-          <div style={{ color: "#8a8aa0", fontSize: 13, marginBottom: 14, fontStyle: "italic" }}>
+          <div className="muted" style={{ fontSize: 13, marginBottom: 16, fontStyle: "italic" }}>
             No channels yet. Add one below.
           </div>
         )}
@@ -218,19 +213,20 @@ export default function PromptsPage() {
         {presets.map((p) => (
           <div
             key={p.id}
-            style={{ border: "1px solid #2a2a3a", borderRadius: 8, padding: 12, marginBottom: 10 }}
+            className="card-inset"
+            style={{ padding: 14, marginBottom: 10 }}
           >
             {editingId === p.id ? (
               <>
                 <label className="label" style={labelStyle}>
-                  Channel name <span style={{ color: "#ff6b6b" }}>*</span>
+                  Channel name <span style={{ color: "var(--danger)" }}>*</span>
                 </label>
                 <input
                   className="input"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   placeholder="Channel name"
-                  style={{ marginBottom: 8, width: "100%" }}
+                  style={{ marginBottom: 10 }}
                 />
                 <label className="label" style={labelStyle}>
                   Description {optionalNote("(optional note — for your reference)")}
@@ -240,7 +236,7 @@ export default function PromptsPage() {
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   placeholder="e.g. Longevity / Blue Zone documentary, audience 50-75"
-                  style={{ marginBottom: 8, width: "100%" }}
+                  style={{ marginBottom: 10 }}
                 />
                 <label className="label" style={labelStyle}>
                   HeyGen voice_id {optionalNote("(optional — empty uses the global HEYGEN_VOICE_ID)")}
@@ -250,17 +246,17 @@ export default function PromptsPage() {
                   value={editVoiceId}
                   onChange={(e) => setEditVoiceId(e.target.value)}
                   placeholder="e.g. 1021285c663b465bb2af8b9f9c596d0c"
-                  style={{ marginBottom: 8, width: "100%" }}
+                  style={{ marginBottom: 10 }}
                 />
                 <label className="label" style={labelStyle}>
-                  Scene Split prompt <span style={{ color: "#ff6b6b" }}>*</span>
+                  Scene Split prompt <span style={{ color: "var(--danger)" }}>*</span>
                 </label>
                 <textarea
                   className="textarea"
                   rows={12}
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
-                  style={{ width: "100%", marginBottom: 8 }}
+                  style={{ marginBottom: 10 }}
                 />
                 <label className="label" style={labelStyle}>
                   Animation Motion override {optionalNote("(optional — empty uses the global default)")}
@@ -271,20 +267,16 @@ export default function PromptsPage() {
                   value={editAnimationMotion}
                   onChange={(e) => setEditAnimationMotion(e.target.value)}
                   placeholder="Leave empty to inherit the default Animation Motion prompt."
-                  style={{ width: "100%", marginBottom: 8 }}
+                  style={{ marginBottom: 12 }}
                 />
                 <div style={{ display: "flex", gap: 8 }}>
                   <button className="btn" onClick={saveEdit}>
                     Save
                   </button>
-                  <button className="btn" onClick={cancelEdit} style={{ background: "#2a2a3a" }}>
+                  <button className="btn-secondary" onClick={cancelEdit}>
                     Cancel
                   </button>
-                  <button
-                    className="btn"
-                    onClick={() => deletePreset(p.id)}
-                    style={{ background: "#5a2a2a", marginLeft: "auto" }}
-                  >
+                  <button className="btn-danger" onClick={() => deletePreset(p.id)} style={{ marginLeft: "auto" }}>
                     Delete
                   </button>
                 </div>
@@ -292,52 +284,30 @@ export default function PromptsPage() {
             ) : (
               <>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}>{p.name}</div>
+                  <div style={{ fontWeight: 650, fontSize: 14.5 }}>{p.name}</div>
                   {p.heygen_voice_id && (
-                    <span
-                      style={{
-                        padding: "2px 7px",
-                        background: "#24402a",
-                        color: "#90e0a0",
-                        borderRadius: 4,
-                        fontSize: 11,
-                        fontWeight: 600,
-                      }}
-                      title={`Custom HeyGen voice: ${p.heygen_voice_id}`}
-                    >
+                    <span className="badge badge-success" title={`Custom HeyGen voice: ${p.heygen_voice_id}`}>
                       voice
                     </span>
                   )}
                   {p.animation_motion && (
-                    <span
-                      style={{
-                        padding: "2px 7px",
-                        background: "#2a2440",
-                        color: "#a690ff",
-                        borderRadius: 4,
-                        fontSize: 11,
-                        fontWeight: 600,
-                      }}
-                      title="Custom Animation Motion override"
-                    >
+                    <span className="badge badge-accent" title="Custom Animation Motion override">
                       motion
                     </span>
                   )}
-                  <div style={{ color: "#6a6a80", fontSize: 12, marginLeft: "auto" }}>
+                  <div className="faint" style={{ fontSize: 11.5, marginLeft: "auto" }}>
                     {new Date(p.updated_at).toLocaleDateString()}
                   </div>
-                  <button
-                    className="btn"
-                    onClick={() => startEdit(p)}
-                    style={{ padding: "4px 12px", fontSize: 13 }}
-                  >
+                  <button className="btn-secondary btn-sm" onClick={() => startEdit(p)}>
                     Edit
                   </button>
                 </div>
                 {p.description && (
-                  <div style={{ color: "#b0b0c0", fontSize: 12.5, marginTop: 5 }}>{p.description}</div>
+                  <div style={{ color: "var(--fg-muted)", fontSize: 12.5, marginTop: 6 }}>
+                    {p.description}
+                  </div>
                 )}
-                <div style={{ color: "#9090a8", fontSize: 12, marginTop: 5, lineHeight: 1.5 }}>
+                <div className="faint" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>
                   {p.content.slice(0, 150)}
                   {p.content.length > 150 ? "…" : ""}
                 </div>
@@ -347,18 +317,18 @@ export default function PromptsPage() {
         ))}
 
         {/* New channel form */}
-        <div style={{ borderTop: "1px solid #2a2a3a", paddingTop: 14, marginTop: 14 }}>
-          <h3 style={{ fontWeight: 700, marginBottom: 8, fontSize: 15 }}>Add new channel</h3>
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16, marginTop: 16 }}>
+          <h3 style={{ marginBottom: 10 }}>Add new channel</h3>
 
           <label className="label" style={labelStyle}>
-            Channel name <span style={{ color: "#ff6b6b" }}>*</span>
+            Channel name <span style={{ color: "var(--danger)" }}>*</span>
           </label>
           <input
             className="input"
             placeholder="e.g. The Blue Zone Way"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            style={{ marginBottom: 8, width: "100%" }}
+            style={{ marginBottom: 10 }}
           />
 
           <label className="label" style={labelStyle}>
@@ -369,7 +339,7 @@ export default function PromptsPage() {
             placeholder="e.g. Longevity / Blue Zone documentary, audience 50-75"
             value={newDescription}
             onChange={(e) => setNewDescription(e.target.value)}
-            style={{ marginBottom: 8, width: "100%" }}
+            style={{ marginBottom: 10 }}
           />
 
           <label className="label" style={labelStyle}>
@@ -380,30 +350,28 @@ export default function PromptsPage() {
             placeholder="e.g. 1021285c663b465bb2af8b9f9c596d0c"
             value={newVoiceId}
             onChange={(e) => setNewVoiceId(e.target.value)}
-            style={{ marginBottom: 8, width: "100%" }}
+            style={{ marginBottom: 10 }}
           />
 
           <label className="label" style={labelStyle}>
-            Scene Split prompt <span style={{ color: "#ff6b6b" }}>*</span>
+            Scene Split prompt <span style={{ color: "var(--danger)" }}>*</span>
           </label>
           <textarea
             className="textarea"
             rows={9}
-            placeholder="Paste this channel's scene_split system prompt here. See docs/PROMPT-GUIDE.md."
+            placeholder="Paste this channel's scene_split system prompt. See docs/PROMPT-GUIDE.md."
             value={newContent}
             onChange={(e) => setNewContent(e.target.value)}
-            style={{ width: "100%", marginBottom: 6 }}
+            style={{ marginBottom: 8 }}
           />
-          <div style={{ marginBottom: 10 }}>
-            <button
-              className="btn"
-              onClick={() => setNewContent(values.scene_split ?? "")}
-              style={{ background: "#2a2a3a", padding: "4px 10px", fontSize: 12 }}
-              title="Copy current default scene_split as a starting point"
-            >
-              ↓ Copy scene_split from default
-            </button>
-          </div>
+          <button
+            className="btn-ghost btn-sm"
+            onClick={() => setNewContent(values.scene_split ?? "")}
+            title="Copy the current default scene_split as a starting point"
+            style={{ marginBottom: 12 }}
+          >
+            ↓ Copy scene_split from default
+          </button>
 
           <label className="label" style={labelStyle}>
             Animation Motion override {optionalNote("(optional — empty uses the global default)")}
@@ -414,40 +382,42 @@ export default function PromptsPage() {
             placeholder="Leave empty to inherit the default. Fill in for a per-channel motion style."
             value={newAnimationMotion}
             onChange={(e) => setNewAnimationMotion(e.target.value)}
-            style={{ width: "100%", marginBottom: 6 }}
+            style={{ marginBottom: 8 }}
           />
-          <div style={{ marginBottom: 12 }}>
-            <button
-              className="btn"
-              onClick={() => setNewAnimationMotion(values.animation_motion ?? "")}
-              style={{ background: "#2a2a3a", padding: "4px 10px", fontSize: 12 }}
-              title="Copy current default Animation Motion as a starting point"
-            >
-              ↓ Copy motion from default
+          <button
+            className="btn-ghost btn-sm"
+            onClick={() => setNewAnimationMotion(values.animation_motion ?? "")}
+            title="Copy the current default Animation Motion as a starting point"
+            style={{ marginBottom: 14 }}
+          >
+            ↓ Copy motion from default
+          </button>
+
+          <div>
+            <button className="btn" onClick={createPreset}>
+              Add channel
             </button>
           </div>
-
-          <button className="btn" onClick={createPreset}>
-            Add channel
-          </button>
         </div>
       </div>
 
-      {/* ── Default prompts ─────────────────────────────────────────── */}
-      <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>Default prompts</h2>
-      <p style={{ color: "#9090a8", fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>
-        Used when a run has no channel selected, or when a channel leaves a field empty. Changes
-        take effect on the next run — no restart needed.
-      </p>
-      <div style={{ marginBottom: 12 }}>
-        <button className="btn" onClick={save}>
+      {/* ─── Default prompts ────────────────────────────────────────────── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+        <h2 style={{ margin: 0 }}>Default prompts</h2>
+        <button className="btn btn-sm" onClick={save}>
           {saved ? "Saved ✓" : "Save all prompts"}
         </button>
       </div>
+      <p className="muted" style={{ fontSize: 12.5, marginBottom: 14, lineHeight: 1.5 }}>
+        Used when a run has no channel selected, or when a channel leaves a field empty. Changes take
+        effect on the next run — no restart needed.
+      </p>
       {META.map((m) => (
         <div key={m.name} className="card" style={{ marginBottom: 14 }}>
-          <h3 style={{ fontWeight: 700, marginBottom: 4 }}>{m.label}</h3>
-          <p style={{ color: "#9090a8", fontSize: 13, marginBottom: 10, lineHeight: 1.5 }}>{m.help}</p>
+          <h3 style={{ marginBottom: 4 }}>{m.label}</h3>
+          <p className="muted" style={{ fontSize: 12.5, marginBottom: 10, lineHeight: 1.5 }}>
+            {m.help}
+          </p>
           <textarea
             className="textarea"
             rows={m.rows}

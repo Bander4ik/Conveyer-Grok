@@ -4,12 +4,9 @@ import { ADVANCED_GROUPS } from "../settings/_groups";
 import { GroupCard } from "../settings/_group-card";
 
 /**
- * Advanced settings page. Everything that was previously crowded into the main
- * /settings page lives here in a compact layout: storage, LLM provider, TTS,
- * images, animations, video assembly, concurrency, alt providers.
- *
- * Reads and writes the same /api/settings endpoint as /settings — fields are
- * just regrouped, no separate persistence.
+ * Advanced settings page. Pipeline behavior — TTS, video model, FFmpeg,
+ * concurrency, alternative providers. Reads/writes the same /api/settings
+ * endpoint as /settings; fields are just regrouped.
  */
 export default function AdvancedSettingsPage() {
   const [values, setValues] = useState<Record<string, string>>({});
@@ -21,7 +18,9 @@ export default function AdvancedSettingsPage() {
     setValues(data);
     setRevealing(reveal);
   }
-  useEffect(() => { load(false); }, []);
+  useEffect(() => {
+    load(false);
+  }, []);
 
   async function save() {
     const cleaned: Record<string, string> = {};
@@ -36,7 +35,7 @@ export default function AdvancedSettingsPage() {
       body: JSON.stringify(cleaned),
     });
     if (!r.ok) {
-      const j = await r.json().catch(() => ({} as { error?: string }));
+      const j = await r.json().catch(() => ({}) as { error?: string });
       alert(`Save failed: ${j.error || r.statusText}`);
       return;
     }
@@ -47,32 +46,34 @@ export default function AdvancedSettingsPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Advanced settings</h1>
-      <p style={{ color: "#8a8aa0", marginBottom: 12, lineHeight: 1.5, fontSize: 13 }}>
-        Pipeline behavior — TTS voice, image/video models, FFmpeg, concurrency. Main API keys live
-        in <a href="/settings" style={{ color: "#7c5cff" }}>Keys &amp; Settings</a>.
+      <h1>Advanced settings</h1>
+      <p className="muted" style={{ marginBottom: 18, fontSize: 14 }}>
+        Pipeline behavior — TTS, video model, FFmpeg, concurrency. Main API keys live in{" "}
+        <a href="/settings">Keys &amp; Settings</a>.
       </p>
 
       <div
         style={{
           display: "flex",
           gap: 8,
-          marginBottom: 12,
+          marginBottom: 18,
           position: "sticky",
           top: 0,
           background: "var(--bg)",
-          padding: "6px 0",
+          padding: "10px 0",
           zIndex: 10,
         }}
       >
         <button className="btn-secondary" onClick={() => load(!revealing)}>
-          {revealing ? "Hide secret values" : "Reveal secret values (to edit)"}
+          {revealing ? "Hide secret values" : "Reveal secret values"}
         </button>
-        <button className="btn" onClick={save}>{saved ? "Saved ✓" : "Save all changes"}</button>
+        <button className="btn" onClick={save}>
+          {saved ? "Saved ✓" : "Save all changes"}
+        </button>
       </div>
 
       {ADVANCED_GROUPS.map((g) => (
-        <GroupCard key={g.title} group={g} values={values} setValues={setValues} compact />
+        <GroupCard key={g.title} group={g} values={values} setValues={setValues} />
       ))}
     </div>
   );

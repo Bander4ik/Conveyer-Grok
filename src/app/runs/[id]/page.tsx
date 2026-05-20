@@ -74,7 +74,10 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
     }
     tick();
     const t = setInterval(tick, 2500);
-    return () => { alive = false; clearInterval(t); };
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
   }, [id]);
 
   useEffect(() => {
@@ -91,11 +94,10 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
     try {
       const r = await fetch(`/api/runs/${id}/drive`, { method: "POST" });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({} as { error?: string }));
+        const j = await r.json().catch(() => ({}) as { error?: string });
         alert(`Upload to Drive failed:\n\n${j.error || r.statusText}`);
         return;
       }
-      // Refresh status immediately
       const fresh = await fetch(`/api/runs/${id}/drive`).then((x) => x.json());
       setDrive(fresh as DriveStatus);
     } finally {
@@ -116,91 +118,94 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
     }
   }
 
-  const fileUrl = (p: string, dl = false) => `/api/runs/${id}/file?p=${encodeURIComponent(p)}${dl ? "&download=1" : ""}`;
+  const fileUrl = (p: string, dl = false) =>
+    `/api/runs/${id}/file?p=${encodeURIComponent(p)}${dl ? "&download=1" : ""}`;
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800 }}>{run?.title || `Run ${id.slice(0, 8)}`}</h1>
-          <div style={{ color: "#8a8aa0", fontSize: 12 }}>{id}</div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: 12,
+          marginBottom: 18,
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <h1 style={{ marginBottom: 2 }}>{run?.title || `Run ${id.slice(0, 8)}`}</h1>
+          <div className="mono faint" style={{ fontSize: 11.5 }}>{id}</div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           {(run?.status === "running" || run?.status === "pending") && (
-            <button className="btn-secondary" onClick={cancel} style={{ color: "#ff8888", borderColor: "#3a1d1d" }}>
-              ⏹ Stop
+            <button className="btn-danger btn-sm" onClick={cancel}>
+              Stop
             </button>
           )}
           {run && <span className={`tag tag-${run.status}`}>{run.status}</span>}
         </div>
       </div>
 
+      {/* ─── Final video ────────────────────────────────────────────────── */}
       {assets?.finalExists && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div className="card" style={{ marginBottom: 14 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+              marginBottom: 12,
+              flexWrap: "wrap",
+            }}
+          >
             <div>
-              <div style={{ fontWeight: 700 }}>🎬 Final video</div>
-              <div style={{ color: "#8a8aa0", fontSize: 12 }}>
+              <h2 style={{ margin: 0 }}>Final video</h2>
+              <div className="faint" style={{ fontSize: 12 }}>
                 {(assets.finalSize / (1024 * 1024)).toFixed(2)} MB
               </div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <a className="btn" href={fileUrl("final.mp4", true)}>⬇ Download MP4</a>
-              <button className="btn-secondary" onClick={openFolder}>📁 Open folder</button>
+              <a className="btn" href={fileUrl("final.mp4", true)}>
+                Download MP4
+              </a>
+              <button className="btn-secondary" onClick={openFolder}>
+                Open folder
+              </button>
             </div>
           </div>
           <video
             controls
-            style={{ width: "100%", maxHeight: 480, borderRadius: 8, background: "#000" }}
+            style={{ width: "100%", maxHeight: 480, borderRadius: "var(--r-sm)", background: "#000" }}
             src={fileUrl("final.mp4")}
           />
         </div>
       )}
 
-      {/* ─── Google Drive status ────────────────────────────────────────
-          Shows ONLY for runs that have finished (final.mp4 exists or status==done).
-          Designed to be readable by non-technical users — no file IDs in UI.
-      */}
+      {/* ─── Google Drive status ────────────────────────────────────────── */}
       {drive && assets?.finalExists && run?.status === "done" && (
-        <div
-          className="card"
-          style={{
-            marginBottom: 12,
-            borderColor: drive.synced ? "#3a5a3a" : drive.connected ? "#3a4a6a" : "#3a3a4a",
-            borderWidth: 1,
-          }}
-        >
+        <div className="card" style={{ marginBottom: 14 }}>
           {drive.synced ? (
             <>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-                <span style={{ fontWeight: 700, fontSize: 15, color: "#6dd66d" }}>
-                  ☁ Saved to Google Drive
-                </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+                <h2 style={{ margin: 0, color: "var(--success)" }}>Saved to Google Drive</h2>
                 {drive.syncedAt && (
-                  <span style={{ color: "#8a8aa0", fontSize: 12 }}>
-                    {new Date(drive.syncedAt.endsWith("Z") ? drive.syncedAt : drive.syncedAt + "Z").toLocaleString()}
+                  <span className="faint" style={{ fontSize: 12 }}>
+                    {new Date(
+                      drive.syncedAt.endsWith("Z") ? drive.syncedAt : drive.syncedAt + "Z"
+                    ).toLocaleString()}
                   </span>
                 )}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {drive.finalVideoLink && (
-                  <a
-                    className="btn-secondary"
-                    href={drive.finalVideoLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    🎬 Open final video in Drive
+                  <a className="btn-secondary" href={drive.finalVideoLink} target="_blank" rel="noopener noreferrer">
+                    Open final video in Drive
                   </a>
                 )}
                 {drive.clipsFolderLink && (
-                  <a
-                    className="btn-secondary"
-                    href={drive.clipsFolderLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    📂 Open clips folder
+                  <a className="btn-secondary" href={drive.clipsFolderLink} target="_blank" rel="noopener noreferrer">
+                    Open clips folder
                   </a>
                 )}
                 <button
@@ -209,38 +214,34 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
                   disabled={uploadingDrive}
                   title="Re-upload final video and refresh the manifest"
                 >
-                  {uploadingDrive ? "Syncing..." : "🔁 Sync again"}
+                  {uploadingDrive ? "Syncing…" : "Sync again"}
                 </button>
               </div>
               {!drive.canRetry && (
-                <div style={{ color: "#8a8aa0", fontSize: 11, marginTop: 8 }}>
-                  Note: raw scene clips have already been cleaned up locally — "Sync again"
-                  will only re-upload the final video + manifest.
+                <div className="faint" style={{ fontSize: 11, marginTop: 9 }}>
+                  Raw scene clips have already been cleaned up locally — &quot;Sync again&quot; only
+                  re-uploads the final video + manifest.
                 </div>
               )}
             </>
           ) : drive.connected ? (
             <>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>
-                ☁ Not yet in Google Drive
-              </div>
-              <p style={{ color: "#8a8aa0", fontSize: 13, marginBottom: 10, lineHeight: 1.5 }}>
+              <h2 style={{ marginBottom: 6 }}>Not yet in Google Drive</h2>
+              <p className="muted" style={{ fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>
                 {drive.syncEnabled
-                  ? "Auto-upload is on but this run hasn't been synced yet — probably finished before Drive was connected, or the upload failed. Click below to upload now."
+                  ? "Auto-upload is on but this run hasn't synced yet — probably finished before Drive was connected, or the upload failed."
                   : "Auto-upload is off in Settings. You can still upload this single run by hand."}
               </p>
               <button className="btn" onClick={uploadToDrive} disabled={uploadingDrive}>
-                {uploadingDrive ? "Uploading..." : "⬆ Upload to Google Drive"}
+                {uploadingDrive ? "Uploading…" : "Upload to Google Drive"}
               </button>
             </>
           ) : (
             <>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6, color: "#ffce4d" }}>
-                ⚠ Google Drive is not connected
-              </div>
-              <p style={{ color: "#8a8aa0", fontSize: 13, marginBottom: 10, lineHeight: 1.5 }}>
-                Connect your Google account in Settings to save runs to Drive automatically and
-                enable AI search across past clips.
+              <h2 style={{ marginBottom: 6, color: "var(--warning)" }}>Google Drive not connected</h2>
+              <p className="muted" style={{ fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>
+                Connect your Google account in Settings to save runs automatically and enable AI
+                search across past clips.
               </p>
               <a className="btn-secondary" href="/settings">
                 Open Settings →
@@ -250,27 +251,56 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
         </div>
       )}
 
-      <div className="card" style={{ marginBottom: 12, background: "#07070d", maxHeight: 420, overflowY: "auto", fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6, fontFamily: "inherit", fontSize: 13 }}>Logs</div>
-        {logs.length === 0 && <div style={{ color: "#8a8aa0" }}>Waiting for logs…</div>}
-        {logs.map((l, i) => (
-          <div key={l.id ?? i} style={{ padding: "2px 0" }}>
-            <span style={{ color: "#5a5a70" }}>{new Date(l.ts).toLocaleTimeString()}</span>{" "}
-            {l.stage && <span style={{ color: "#7c5cff" }}>[{l.stage}]</span>}{" "}
-            <span style={{ color: levelColor(l.level) }}>{l.level.toUpperCase()}</span>{" "}
-            <span>{l.message}</span>
-          </div>
-        ))}
-        <div ref={tail} />
+      {/* ─── Logs ───────────────────────────────────────────────────────── */}
+      <div className="card" style={{ marginBottom: 14, padding: 0, overflow: "hidden" }}>
+        <div
+          style={{
+            fontWeight: 650,
+            fontSize: 13,
+            padding: "12px 16px",
+            borderBottom: "1px solid var(--border)",
+          }}
+        >
+          Live logs
+        </div>
+        <div
+          className="mono"
+          style={{
+            background: "var(--bg-deep)",
+            maxHeight: 420,
+            overflowY: "auto",
+            fontSize: 11.5,
+            padding: "10px 16px",
+            lineHeight: 1.7,
+          }}
+        >
+          {logs.length === 0 && <div className="faint">Waiting for logs…</div>}
+          {logs.map((l, i) => (
+            <div key={l.id ?? i}>
+              <span className="faint">{new Date(l.ts).toLocaleTimeString()}</span>{" "}
+              {l.stage && <span style={{ color: "var(--accent-hover)" }}>[{l.stage}]</span>}{" "}
+              <span style={{ color: levelColor(l.level), fontWeight: 600 }}>{l.level.toUpperCase()}</span>{" "}
+              <span style={{ color: "var(--fg-muted)" }}>{l.message}</span>
+            </div>
+          ))}
+          <div ref={tail} />
+        </div>
       </div>
 
+      {/* ─── Scene assets ───────────────────────────────────────────────── */}
       {assets && assets.scenes.length > 0 && (
         <div className="card">
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>Scene assets ({assets.scenes.length})</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
+          <h2 style={{ marginBottom: 12 }}>Scene assets · {assets.scenes.length}</h2>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))",
+              gap: 10,
+            }}
+          >
             {assets.scenes.map((s) => (
-              <div key={s.index} style={{ border: "1px solid #232334", borderRadius: 8, padding: 8, background: "#0f0f17" }}>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>Scene #{s.index}</div>
+              <div key={s.index} className="card-inset" style={{ padding: 10 }}>
+                <div style={{ fontWeight: 650, fontSize: 12.5, marginBottom: 7 }}>Scene #{s.index}</div>
                 {s.image && (
                   <a href={fileUrl(`images/${s.image.name}`, true)} title="Download image">
                     <img
@@ -281,13 +311,33 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
                   </a>
                 )}
                 {s.audio && (
-                  <audio controls src={fileUrl(`audio/${s.audio.name}`)} style={{ width: "100%", marginTop: 6 }} />
+                  <audio
+                    controls
+                    src={fileUrl(`audio/${s.audio.name}`)}
+                    style={{ width: "100%", marginTop: 7 }}
+                  />
                 )}
-                <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap", fontSize: 11 }}>
-                  {s.image && <a href={fileUrl(`images/${s.image.name}`, true)} className="btn-secondary" style={{ fontSize: 11, padding: "3px 6px" }}>img</a>}
-                  {s.audio && <a href={fileUrl(`audio/${s.audio.name}`, true)} className="btn-secondary" style={{ fontSize: 11, padding: "3px 6px" }}>mp3</a>}
-                  {s.animation && <a href={fileUrl(`animations/${s.animation.name}`, true)} className="btn-secondary" style={{ fontSize: 11, padding: "3px 6px" }}>anim</a>}
-                  {s.clip && <a href={fileUrl(`clips/${s.clip.name}`, true)} className="btn-secondary" style={{ fontSize: 11, padding: "3px 6px" }}>clip</a>}
+                <div style={{ display: "flex", gap: 5, marginTop: 7, flexWrap: "wrap" }}>
+                  {s.audio && (
+                    <a href={fileUrl(`audio/${s.audio.name}`, true)} className="btn-ghost btn-sm">
+                      mp3
+                    </a>
+                  )}
+                  {s.animation && (
+                    <a href={fileUrl(`animations/${s.animation.name}`, true)} className="btn-ghost btn-sm">
+                      clip
+                    </a>
+                  )}
+                  {s.clip && (
+                    <a href={fileUrl(`clips/${s.clip.name}`, true)} className="btn-ghost btn-sm">
+                      rendered
+                    </a>
+                  )}
+                  {s.image && (
+                    <a href={fileUrl(`images/${s.image.name}`, true)} className="btn-ghost btn-sm">
+                      img
+                    </a>
+                  )}
                 </div>
               </div>
             ))}
@@ -300,10 +350,15 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
 
 function levelColor(l: LogEntry["level"]) {
   switch (l) {
-    case "error": return "#ff6d6d";
-    case "warn": return "#ffce4d";
-    case "success": return "#6dd66d";
-    case "debug": return "#8a8aa0";
-    default: return "#b8b8c8";
+    case "error":
+      return "var(--danger)";
+    case "warn":
+      return "var(--warning)";
+    case "success":
+      return "var(--success)";
+    case "debug":
+      return "var(--fg-faint)";
+    default:
+      return "var(--accent-hover)";
   }
 }

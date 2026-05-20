@@ -6,11 +6,11 @@ import { useRouter } from "next/navigation";
 const WORDS_PER_MINUTE = 150;
 
 // Per-job time estimates (in seconds), empirically tuned from production runs
-const AVG_IMAGE_SEC = 90;      // nano-banana-pro at 1k averages ~60-120s
-const AVG_GROK_VIDEO_SEC = 75;  // Grok via 69labs averages ~60-90s per clip
-const AVG_TTS_SEC = 4;         // short scene narration through 69labs is ~2-6s
-const AVG_CLIP_RENDER_SEC = 8; // x264 veryfast render per Ken-Burns / animated clip
-const XFADE_FRAMES_PER_SEC = 1800; // approx encoding speed for xfade chain on one core
+const AVG_IMAGE_SEC = 90;
+const AVG_GROK_VIDEO_SEC = 75; // Grok via 69labs averages ~60-90s per clip
+const AVG_TTS_SEC = 4;
+const AVG_CLIP_RENDER_SEC = 8;
+const XFADE_FRAMES_PER_SEC = 1800;
 
 interface StatsResp {
   keyCount: number;
@@ -60,19 +60,14 @@ export default function NewRunPage() {
   const [previewing, setPreviewing] = useState(false);
   const [matches, setMatches] = useState<ClipMatch[] | null>(null);
   const [searching, setSearching] = useState(false);
-  /** scene_index → drive_file_id. Empty when user hasn't picked any reuse. */
   const [reuseMap, setReuseMap] = useState<Record<number, string>>({});
-  /** scene_index → true means suggestions panel is expanded for that scene. */
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
 
-  // Prompt Presets — list + currently selected. selectedPresetId === null means
-  // "use the default scene_split prompt from /prompts".
+  // Channel profiles
   const [presets, setPresets] = useState<{ id: number; name: string }[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState<number | null>(null);
 
-  /** Confidence threshold (%) for automatic picking. User can still un-tick or pick others manually. */
   const AUTO_PICK_THRESHOLD = 80;
-
   const router = useRouter();
 
   useEffect(() => {
@@ -100,7 +95,7 @@ export default function NewRunPage() {
     return {
       words,
       chars,
-      duration: words === 0 ? "—" : (m > 0 ? `~${m} min ${s} s` : `~${s} s`),
+      duration: words === 0 ? "—" : m > 0 ? `~${m} min ${s} s` : `~${s} s`,
       scenes: Math.max(1, Math.round(seconds / 5)),
       narrationSeconds: seconds,
     };
@@ -118,12 +113,11 @@ export default function NewRunPage() {
     const phase2 = (Math.ceil(N / stats.assembleConcurrency) * AVG_CLIP_RENDER_SEC) / 60;
     const totalFrames = scriptStats.narrationSeconds * 30;
     const chunks = stats.xfadeChunks;
-    const phase3 = (totalFrames / chunks / XFADE_FRAMES_PER_SEC) / 60;
+    const phase3 = totalFrames / chunks / XFADE_FRAMES_PER_SEC / 60;
     const total = phase1 + phase2 + phase3;
     return { total, phase1, phase2, phase3, imageMin, animMin, ttsMin, animScenes };
   }, [stats, scriptStats]);
 
-  /** Group matches by new_scene_index, sorted by score descending. */
   const matchesByScene = useMemo(() => {
     const m = new Map<number, ClipMatch[]>();
     for (const x of matches ?? []) {
@@ -135,24 +129,17 @@ export default function NewRunPage() {
     return m;
   }, [matches]);
 
-  /**
-   * Auto-pick rule: whenever a new set of matches arrives, automatically tick
-   * the top match for every scene whose best score is >= 80%. The user can
-   * still un-tick or switch to a lower-confidence match manually by expanding
-   * the panel. Below the threshold we leave the scene unchecked — the AI
-   * isn't confident enough to swap a generated clip without human review.
-   */
   useEffect(() => {
     if (!matches || matches.length === 0) return;
     const auto: Record<number, string> = {};
     for (const [sceneIdx, list] of matchesByScene.entries()) {
-      const best = list[0]; // already sorted desc
+      const best = list[0];
       if (best && best.score >= AUTO_PICK_THRESHOLD) {
         auto[sceneIdx] = best.drive_file_id;
       }
     }
     setReuseMap(auto);
-    setExpanded({}); // collapse all on fresh load
+    setExpanded({});
   }, [matches, matchesByScene]);
 
   const reuseCount = Object.keys(reuseMap).length;
@@ -216,10 +203,7 @@ export default function NewRunPage() {
         script: string;
         reuseMap?: Record<number, string>;
         presetId?: number | null;
-      } = {
-        title,
-        script,
-      };
+      } = { title, script };
       if (reuseCount > 0) body.reuseMap = reuseMap;
       if (selectedPresetId != null) body.presetId = selectedPresetId;
       const r = await fetch("/api/runs", {
@@ -240,29 +224,25 @@ export default function NewRunPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 4 }}>New run</h1>
-      <p style={{ color: "#8a8aa0", marginBottom: 16 }}>
-        Paste a script — the system splits it into scenes, generates voiceover and imagery, then
-        assembles the final video. Optional: preview scenes first and reuse clips from past runs.
+      <h1>New run</h1>
+      <p className="muted" style={{ marginBottom: 24, fontSize: 14 }}>
+        Paste a script — the system splits it into scenes, generates voiceover and video, then
+        assembles the final MP4. Optionally preview scenes first and reuse clips from past runs.
       </p>
 
-      <div className="card" style={{ display: "grid", gap: 12 }}>
+      <div className="card" style={{ display: "grid", gap: 16 }}>
         <div>
           <label className="label">Title (optional)</label>
           <input
             className="input"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g. Solar Storm Test 1"
+            placeholder="e.g. Okinawa Longevity — Test 1"
           />
         </div>
+
         <div>
-          <label className="label">
-            Prompt preset {" "}
-            <span style={{ color: "#8a8aa0", fontWeight: 400, fontSize: 12 }}>
-              (which scene-split prompt to use — manage on /prompts)
-            </span>
-          </label>
+          <label className="label">Channel</label>
           <select
             className="input"
             value={selectedPresetId ?? ""}
@@ -272,16 +252,19 @@ export default function NewRunPage() {
               setScenes(null);
               setMatches(null);
             }}
-            style={{ width: "100%" }}
           >
-            <option value="">Default scene_split prompt</option>
+            <option value="">Default — no channel profile</option>
             {presets.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>
             ))}
           </select>
+          <div className="faint" style={{ fontSize: 12, marginTop: 5 }}>
+            Picks the scene-split prompt, voice and motion for this channel. Manage in Channels &amp; Prompts.
+          </div>
         </div>
+
         <div>
           <label className="label">Script</label>
           <textarea
@@ -294,22 +277,39 @@ export default function NewRunPage() {
               setMatches(null);
               setReuseMap({});
             }}
-            placeholder="Paste the full script here..."
+            placeholder="Paste the full narrator script here..."
           />
-          <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 13, color: "#8a8aa0", flexWrap: "wrap" }}>
-            <span><strong style={{ color: "#e8e8f0" }}>{scriptStats.words}</strong> words</span>
-            <span><strong style={{ color: "#e8e8f0" }}>{scriptStats.chars}</strong> chars</span>
-            <span>≈ <strong style={{ color: "#7c5cff" }}>{scriptStats.duration}</strong> of final video</span>
-            <span>≈ <strong style={{ color: "#e8e8f0" }}>{scriptStats.scenes}</strong> scenes</span>
+          <div
+            style={{
+              display: "flex",
+              gap: 18,
+              marginTop: 10,
+              fontSize: 13,
+              color: "var(--fg-muted)",
+              flexWrap: "wrap",
+            }}
+          >
+            <span>
+              <strong style={{ color: "var(--fg)" }}>{scriptStats.words}</strong> words
+            </span>
+            <span>
+              <strong style={{ color: "var(--fg)" }}>{scriptStats.chars}</strong> chars
+            </span>
+            <span>
+              ≈ <strong style={{ color: "var(--accent-hover)" }}>{scriptStats.duration}</strong> final video
+            </span>
+            <span>
+              ≈ <strong style={{ color: "var(--fg)" }}>{scriptStats.scenes}</strong> scenes
+            </span>
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button className="btn" onClick={start} disabled={busy || !script.trim()}>
             {busy
-              ? "Starting..."
+              ? "Starting…"
               : reuseCount > 0
-                ? `Run pipeline (reusing ${reuseCount} clip${reuseCount === 1 ? "" : "s"})`
+                ? `Run pipeline · reusing ${reuseCount} clip${reuseCount === 1 ? "" : "s"}`
                 : "Run pipeline"}
           </button>
           <button
@@ -318,74 +318,49 @@ export default function NewRunPage() {
             disabled={previewing || !script.trim()}
             title="See the scenes before running. Lets you pick reusable clips from past runs."
           >
-            {previewing ? "Splitting…" : scenes ? "Re-split scenes" : "👁 Preview scenes first"}
+            {previewing ? "Splitting…" : scenes ? "Re-split scenes" : "Preview scenes first"}
           </button>
         </div>
       </div>
 
-      {/* ─── Scene preview + library suggestions ──────────────────────────── */}
+      {/* ─── Scene preview + library suggestions ─────────────────────────── */}
       {scenes && scenes.length > 0 && (
-        <div
-          className="card"
-          style={{
-            marginTop: 16,
-            borderColor: "#3a5a8a",
-            borderWidth: 2,
-          }}
-        >
+        <div className="card" style={{ marginTop: 16 }}>
           <div
             style={{
               display: "flex",
               justifyContent: "space-between",
-              alignItems: "center",
-              gap: 10,
-              marginBottom: 10,
+              alignItems: "flex-start",
+              gap: 12,
+              marginBottom: 14,
               flexWrap: "wrap",
             }}
           >
             <div>
-              <h3 style={{ fontWeight: 700, fontSize: 16 }}>Scene preview ({scenes.length})</h3>
-              <div style={{ color: "#8a8aa0", fontSize: 12 }}>
-                Reuse clips from past runs to skip generation for those scenes — saves time and
-                credits.
+              <h2 style={{ marginBottom: 2 }}>Scene preview · {scenes.length}</h2>
+              <div className="muted" style={{ fontSize: 12.5 }}>
+                Reuse clips from past runs to skip generation — saves time and credits.
               </div>
             </div>
-            <div>
-              {drive?.connected ? (
-                <button
-                  className="btn-secondary"
-                  onClick={findClips}
-                  disabled={searching}
-                >
-                  {searching
-                    ? "Searching library…"
-                    : matches
-                      ? "🔁 Search again"
-                      : "🔍 Find existing clips from library"}
-                </button>
-              ) : (
-                <a
-                  className="btn-secondary"
-                  href="/settings"
-                  title="Connect Google Drive to enable library search"
-                >
-                  Connect Drive to enable search
-                </a>
-              )}
-            </div>
+            {drive?.connected ? (
+              <button className="btn-secondary btn-sm" onClick={findClips} disabled={searching}>
+                {searching
+                  ? "Searching library…"
+                  : matches
+                    ? "Search again"
+                    : "Find existing clips"}
+              </button>
+            ) : (
+              <a className="btn-secondary btn-sm" href="/settings" title="Connect Google Drive to enable library search">
+                Connect Drive to search
+              </a>
+            )}
           </div>
 
           {matches !== null && matches.length === 0 && (
             <div
-              style={{
-                marginBottom: 12,
-                padding: 10,
-                background: "#1a1a28",
-                border: "1px solid #2a2a3a",
-                borderRadius: 6,
-                color: "#9090a8",
-                fontSize: 12,
-              }}
+              className="card-inset"
+              style={{ marginBottom: 12, padding: "10px 12px", color: "var(--fg-muted)", fontSize: 12.5 }}
             >
               No similar clips found in your library — every scene will be generated from scratch.
             </div>
@@ -394,62 +369,41 @@ export default function NewRunPage() {
           {matches !== null && matches.length > 0 && (
             <div
               style={{
-                marginBottom: 12,
-                padding: 10,
-                background: reuseCount > 0 ? "#1a2a1a" : "#1a1a28",
-                border: `1px solid ${reuseCount > 0 ? "#3a5a3a" : "#2a2a3a"}`,
-                borderRadius: 6,
+                marginBottom: 14,
+                padding: "11px 13px",
+                background: reuseCount > 0 ? "var(--success-soft)" : "var(--surface-2)",
+                border: `1px solid ${reuseCount > 0 ? "rgba(74,222,128,0.3)" : "var(--border)"}`,
+                borderRadius: "var(--r-sm)",
                 fontSize: 13,
-                color: reuseCount > 0 ? "#6dd66d" : "#9090a8",
+                color: reuseCount > 0 ? "var(--success)" : "var(--fg-muted)",
+                lineHeight: 1.55,
               }}
             >
               {reuseCount > 0 ? (
                 <>
-                  ✓ Auto-picked {reuseCount} clip{reuseCount === 1 ? "" : "s"} at ≥{AUTO_PICK_THRESHOLD}% confidence.
-                  Other scenes will be generated fresh. Click any scene below to inspect, change the pick,
-                  or browse lower-confidence options.
+                  Auto-picked {reuseCount} clip{reuseCount === 1 ? "" : "s"} at ≥{AUTO_PICK_THRESHOLD}% confidence.
+                  Other scenes generate fresh. Click any scene below to inspect or change the pick.
                 </>
               ) : (
                 <>
-                  👀 Found {matches.length} suggestion{matches.length === 1 ? "" : "s"} across{" "}
+                  Found {matches.length} suggestion{matches.length === 1 ? "" : "s"} across{" "}
                   {matchesByScene.size} scene{matchesByScene.size === 1 ? "" : "s"}, but none passed the{" "}
-                  {AUTO_PICK_THRESHOLD}% confidence threshold for auto-pick. Click a scene to review and
-                  pick manually, or leave all to generate fresh.
+                  {AUTO_PICK_THRESHOLD}% auto-pick threshold. Click a scene to review and pick manually.
                 </>
               )}
-              <div style={{ marginTop: 8, display: "flex", gap: 12, fontSize: 11, flexWrap: "wrap" }}>
+              <div style={{ marginTop: 9, display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
                   type="button"
+                  className="btn-ghost btn-sm"
                   onClick={() => {
                     const all: Record<number, boolean> = {};
                     for (const idx of matchesByScene.keys()) all[idx] = true;
                     setExpanded(all);
                   }}
-                  style={{
-                    background: "transparent",
-                    border: "1px solid #3a3a4a",
-                    color: "#b8b8c8",
-                    padding: "3px 8px",
-                    borderRadius: 4,
-                    cursor: "pointer",
-                    fontSize: 11,
-                  }}
                 >
                   Expand all
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setExpanded({})}
-                  style={{
-                    background: "transparent",
-                    border: "1px solid #3a3a4a",
-                    color: "#b8b8c8",
-                    padding: "3px 8px",
-                    borderRadius: 4,
-                    cursor: "pointer",
-                    fontSize: 11,
-                  }}
-                >
+                <button type="button" className="btn-ghost btn-sm" onClick={() => setExpanded({})}>
                   Collapse all
                 </button>
               </div>
@@ -464,52 +418,21 @@ export default function NewRunPage() {
               const bestScore = sceneMatches[0]?.score ?? 0;
               const isExpanded = !!expanded[scene.index];
 
-              // Decide the status badge in the compact header
               let statusBadge: React.ReactNode = null;
               if (pickedMatch) {
                 statusBadge = (
-                  <span
-                    style={{
-                      color: "#6dd66d",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      background: "#1a2a1a",
-                      padding: "2px 8px",
-                      borderRadius: 999,
-                    }}
-                  >
-                    ✓ Reusing {pickedMatch.score}% match
-                  </span>
+                  <span className="badge badge-success">✓ reusing {pickedMatch.score}%</span>
                 );
               } else if (sceneMatches.length > 0 && bestScore >= AUTO_PICK_THRESHOLD) {
-                // Auto-pick was applied but user un-ticked it
                 statusBadge = (
-                  <span
-                    style={{
-                      color: "#ffce4d",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      background: "#2a2010",
-                      padding: "2px 8px",
-                      borderRadius: 999,
-                    }}
-                  >
-                    ○ Will generate new (suggestion was unchecked)
+                  <span className="badge" style={{ background: "var(--warning-soft)", color: "var(--warning)" }}>
+                    will generate new
                   </span>
                 );
               } else if (sceneMatches.length > 0) {
                 statusBadge = (
-                  <span
-                    style={{
-                      color: "#8a8aa0",
-                      fontSize: 11,
-                      background: "#14141d",
-                      padding: "2px 8px",
-                      borderRadius: 999,
-                    }}
-                  >
-                    {sceneMatches.length} low-confidence suggestion
-                    {sceneMatches.length === 1 ? "" : "s"} (&lt;{AUTO_PICK_THRESHOLD}%)
+                  <span className="badge badge-neutral">
+                    {sceneMatches.length} low-confidence
                   </span>
                 );
               }
@@ -517,16 +440,12 @@ export default function NewRunPage() {
               return (
                 <div
                   key={scene.index}
-                  style={{
-                    background: "#0f0f17",
-                    border: `1px solid ${pickedMatch ? "#3a5a3a" : "#232334"}`,
-                    borderRadius: 8,
-                  }}
+                  className="card-inset"
+                  style={{ borderColor: pickedMatch ? "rgba(74,222,128,0.3)" : undefined }}
                 >
-                  {/* Compact header — always visible */}
                   <div
                     style={{
-                      padding: "8px 10px",
+                      padding: "9px 11px",
                       display: "flex",
                       alignItems: "center",
                       gap: 10,
@@ -537,13 +456,13 @@ export default function NewRunPage() {
                       setExpanded((prev) => ({ ...prev, [scene.index]: !prev[scene.index] }));
                     }}
                   >
-                    <span style={{ fontWeight: 700, fontSize: 13, minWidth: 70 }}>
+                    <span style={{ fontWeight: 650, fontSize: 12.5, minWidth: 62 }}>
                       Scene {scene.index + 1}
                     </span>
                     <span
                       style={{
-                        color: "#b8b8c8",
-                        fontSize: 12,
+                        color: "var(--fg-muted)",
+                        fontSize: 12.5,
                         flex: 1,
                         whiteSpace: "nowrap",
                         overflow: "hidden",
@@ -555,47 +474,26 @@ export default function NewRunPage() {
                     </span>
                     {statusBadge}
                     {sceneMatches.length > 0 && (
-                      <span
-                        style={{
-                          color: "#8a8aa0",
-                          fontSize: 11,
-                          width: 14,
-                          textAlign: "center",
-                        }}
-                      >
+                      <span style={{ color: "var(--fg-faint)", fontSize: 11, width: 12, textAlign: "center" }}>
                         {isExpanded ? "▾" : "▸"}
                       </span>
                     )}
                   </div>
 
-                  {/* Expanded body — visual prompt + match picker */}
                   {isExpanded && (
-                    <div style={{ padding: "0 10px 10px 10px", borderTop: "1px solid #1a1a28" }}>
-                      <div
-                        style={{
-                          color: "#b8b8c8",
-                          fontSize: 12,
-                          lineHeight: 1.5,
-                          marginTop: 8,
-                          marginBottom: 4,
-                        }}
-                      >
+                    <div style={{ padding: "0 11px 11px", borderTop: "1px solid var(--border)" }}>
+                      <div style={{ color: "var(--fg-muted)", fontSize: 12.5, lineHeight: 1.5, margin: "9px 0 4px" }}>
                         {scene.text}
                       </div>
                       <div
-                        style={{
-                          color: "#7c5cff",
-                          fontSize: 11,
-                          fontFamily: "ui-monospace, monospace",
-                          lineHeight: 1.4,
-                          marginBottom: 10,
-                        }}
+                        className="mono"
+                        style={{ color: "var(--accent-hover)", fontSize: 11, lineHeight: 1.45, marginBottom: 10 }}
                       >
                         {scene.visual_prompt}
                       </div>
                       {sceneMatches.length > 0 && (
                         <div style={{ display: "grid", gap: 6 }}>
-                          <div style={{ fontSize: 11, color: "#8a8aa0", fontWeight: 600 }}>
+                          <div className="muted" style={{ fontSize: 11, fontWeight: 600 }}>
                             Suggestions (sorted by confidence):
                           </div>
                           {sceneMatches.map((m) => {
@@ -606,10 +504,10 @@ export default function NewRunPage() {
                                 style={{
                                   display: "flex",
                                   gap: 10,
-                                  padding: 8,
-                                  background: isPicked ? "#1a2a1a" : "#14141d",
-                                  border: `1px solid ${isPicked ? "#3a5a3a" : "#232334"}`,
-                                  borderRadius: 6,
+                                  padding: 9,
+                                  background: isPicked ? "var(--success-soft)" : "var(--surface)",
+                                  border: `1px solid ${isPicked ? "rgba(74,222,128,0.3)" : "var(--border)"}`,
+                                  borderRadius: "var(--r-sm)",
                                   cursor: "pointer",
                                 }}
                               >
@@ -617,7 +515,7 @@ export default function NewRunPage() {
                                   type="checkbox"
                                   checked={isPicked}
                                   onChange={() => toggleReuse(scene.index, m.drive_file_id)}
-                                  style={{ marginTop: 3 }}
+                                  style={{ marginTop: 3, accentColor: "var(--accent)" }}
                                 />
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div
@@ -632,15 +530,14 @@ export default function NewRunPage() {
                                     <span
                                       style={{
                                         fontSize: 12,
-                                        fontWeight: 600,
-                                        color:
-                                          m.score >= AUTO_PICK_THRESHOLD ? "#6dd66d" : "#ffce4d",
+                                        fontWeight: 650,
+                                        color: m.score >= AUTO_PICK_THRESHOLD ? "var(--success)" : "var(--warning)",
                                       }}
                                     >
                                       {m.score}% match
-                                      {m.score >= AUTO_PICK_THRESHOLD ? " (auto-pick)" : ""}
+                                      {m.score >= AUTO_PICK_THRESHOLD ? " · auto-pick" : ""}
                                     </span>
-                                    <span style={{ fontSize: 11, color: "#8a8aa0" }}>
+                                    <span className="faint" style={{ fontSize: 11 }}>
                                       from &quot;{m.source.run_title || m.source.folder_name}&quot;
                                     </span>
                                     <a
@@ -648,19 +545,19 @@ export default function NewRunPage() {
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       onClick={(e) => e.stopPropagation()}
-                                      style={{ fontSize: 11, color: "#7c5cff", marginLeft: "auto" }}
+                                      style={{ fontSize: 11, marginLeft: "auto" }}
                                     >
                                       Preview ↗
                                     </a>
                                   </div>
-                                  <div style={{ fontSize: 11, color: "#cfcfdf", marginBottom: 4 }}>
+                                  <div style={{ fontSize: 11, color: "var(--fg-muted)", marginBottom: 4 }}>
                                     {m.reason}
                                   </div>
                                   <div
+                                    className="mono"
                                     style={{
                                       fontSize: 10,
-                                      color: "#8a8aa0",
-                                      fontFamily: "ui-monospace, monospace",
+                                      color: "var(--fg-faint)",
                                       lineHeight: 1.4,
                                       maxHeight: 40,
                                       overflow: "auto",
@@ -685,85 +582,94 @@ export default function NewRunPage() {
             <div
               style={{
                 marginTop: 12,
-                padding: 10,
-                background: "#1a2a1a",
-                border: "1px solid #3a5a3a",
-                borderRadius: 6,
+                padding: "11px 13px",
+                background: "var(--success-soft)",
+                border: "1px solid rgba(74,222,128,0.3)",
+                borderRadius: "var(--r-sm)",
                 fontSize: 13,
-                color: "#6dd66d",
+                color: "var(--success)",
               }}
             >
-              ✓ {reuseCount} clip{reuseCount === 1 ? "" : "s"} marked for reuse. Click{" "}
-              <strong>Run pipeline</strong> at the top — those scenes will skip generation and
-              be downloaded from Drive instead.
+              {reuseCount} clip{reuseCount === 1 ? "" : "s"} marked for reuse. Click{" "}
+              <strong>Run pipeline</strong> above — those scenes skip generation and download from Drive.
             </div>
           )}
         </div>
       )}
 
+      {/* ─── Time estimate ───────────────────────────────────────────────── */}
       {timeEstimate && stats && scriptStats.words > 0 && (
-        <div
-          className="card"
-          style={{
-            marginTop: 16,
-            background: "linear-gradient(90deg, #14141d, #1a1a28)",
-            borderColor: stats.keyCount >= 2 ? "#3a5a3a" : undefined,
-          }}
-        >
-          <div style={{ fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 10 }}>
-            ⏱️ Estimated generation time
-            <span style={{ color: "#7c5cff", fontSize: 18 }}>
+        <div className="card" style={{ marginTop: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <h2 style={{ margin: 0 }}>Estimated time</h2>
+            <span
+              style={{
+                color: "var(--accent-hover)",
+                fontSize: 20,
+                fontWeight: 700,
+                letterSpacing: "-0.02em",
+              }}
+            >
               ~{timeEstimate.total < 1 ? "<1" : Math.round(timeEstimate.total)} min
             </span>
           </div>
-          <div style={{ color: "#9090a8", fontSize: 13, lineHeight: 1.7 }}>
+          <div style={{ color: "var(--fg-muted)", fontSize: 13, lineHeight: 1.8 }}>
             <div>
-              <strong style={{ color: "#e8e8f0" }}>Parallel generation</strong> (TTS + images
-              {stats.animationEnabled ? ` + ${timeEstimate.animScenes} video clips` : ""}):
-              ~{Math.round(timeEstimate.phase1)} min
-              <span style={{ color: "#5a5a70", marginLeft: 8 }}>
-                with {stats.keyCount} {stats.keyCount === 1 ? "key" : "keys"} ({stats.total.image} img / {stats.total.anim} vid / {stats.total.tts} TTS in parallel)
+              <strong style={{ color: "var(--fg)" }}>Parallel generation</strong>
+              {stats.animationEnabled ? ` (TTS + ${timeEstimate.animScenes} video clips)` : " (TTS)"}: ~
+              {Math.round(timeEstimate.phase1)} min
+              <span className="faint" style={{ marginLeft: 8 }}>
+                {stats.keyCount} {stats.keyCount === 1 ? "key" : "keys"} · {stats.total.anim} video / {stats.total.tts} TTS in parallel
               </span>
             </div>
             <div>
-              <strong style={{ color: "#e8e8f0" }}>FFmpeg clip render</strong>:
-              ~{Math.round(timeEstimate.phase2 * 10) / 10} min
-              <span style={{ color: "#5a5a70", marginLeft: 8 }}>
+              <strong style={{ color: "var(--fg)" }}>FFmpeg clip render</strong>: ~
+              {Math.round(timeEstimate.phase2 * 10) / 10} min
+              <span className="faint" style={{ marginLeft: 8 }}>
                 {stats.assembleConcurrency} clips at once
               </span>
             </div>
             <div>
-              <strong style={{ color: "#e8e8f0" }}>Final xfade assembly</strong>:
-              ~{Math.round(timeEstimate.phase3 * 10) / 10} min
-              <span style={{ color: "#5a5a70", marginLeft: 8 }}>
+              <strong style={{ color: "var(--fg)" }}>Final xfade assembly</strong>: ~
+              {Math.round(timeEstimate.phase3 * 10) / 10} min
+              <span className="faint" style={{ marginLeft: 8 }}>
                 {stats.xfadeChunks} parallel chunks
               </span>
             </div>
           </div>
           {stats.keyCount === 1 && scriptStats.scenes > 30 && (
-            <div style={{ color: "#ffce4d", fontSize: 12, marginTop: 10, padding: 8, background: "#2a2010", borderRadius: 6 }}>
-              💡 You're running on a single 69labs key. Adding a 2nd key would cut the generation
-              phase roughly in half (estimated ~{Math.round(timeEstimate.total / 2)} min instead of ~{Math.round(timeEstimate.total)} min).
-              Paste extra keys in <a href="/settings" style={{ color: "#7c5cff" }}>Keys &amp; Settings</a> → Required API Keys.
+            <div
+              style={{
+                color: "var(--warning)",
+                fontSize: 12,
+                marginTop: 11,
+                padding: "9px 11px",
+                background: "var(--warning-soft)",
+                borderRadius: "var(--r-sm)",
+                lineHeight: 1.55,
+              }}
+            >
+              You&apos;re on a single 69labs key. A 2nd key roughly halves the generation phase
+              (~{Math.round(timeEstimate.total / 2)} min instead of ~{Math.round(timeEstimate.total)} min).
+              Add keys in <a href="/settings">Keys &amp; Settings</a>.
             </div>
           )}
-          <div style={{ color: "#5a5a70", fontSize: 11, marginTop: 8 }}>
-            Numbers are rough — real runs are usually 10–30% faster. Heavy CPU usage during the
-            assembly phase; weak machines may want to lower ASSEMBLE_CONCURRENCY or
-            ASSEMBLE_XFADE_CHUNKS in Advanced settings.
+          <div className="faint" style={{ fontSize: 11, marginTop: 9 }}>
+            Rough numbers — real runs are usually 10–30% faster.
           </div>
         </div>
       )}
 
+      {/* ─── How it works ───────────────────────────────────────────────── */}
       <div className="card" style={{ marginTop: 16 }}>
-        <h3 style={{ fontWeight: 700, marginBottom: 8 }}>What happens next</h3>
-        <ol style={{ paddingLeft: 20, lineHeight: 1.7 }}>
-          <li>Gemini splits the script into scenes (with visual prompts per scene).</li>
-          <li>For each scene, HeyGen TTS narration and a Grok video clip are generated in parallel.</li>
+        <h2 style={{ marginBottom: 8 }}>What happens next</h2>
+        <ol style={{ paddingLeft: 20, lineHeight: 1.75, margin: 0, color: "var(--fg-muted)", fontSize: 13.5 }}>
+          <li>Gemini splits the script into scenes, each with a visual prompt.</li>
+          <li>Per scene, HeyGen TTS narration and a Grok video clip generate in parallel.</li>
           <li>FFmpeg stitches all clips together with crossfade transitions.</li>
-          <li>If Drive sync is on, the finished run is uploaded automatically.</li>
+          <li>If Drive sync is on, the finished run uploads automatically.</li>
         </ol>
-        <p style={{ color: "#8a8aa0", fontSize: 13, marginTop: 8 }}>
+        <p className="faint" style={{ fontSize: 12.5, marginTop: 10, marginBottom: 0 }}>
           Live logs for every stage stream into the run page in real time.
         </p>
       </div>
