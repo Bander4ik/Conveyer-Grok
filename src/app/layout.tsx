@@ -8,15 +8,15 @@ export const metadata = {
 };
 
 // Applied before first paint so the chosen theme doesn't flash (anti-FOUC).
+// Lives as the first node inside <body> — a manual <head> in an App Router
+// layout breaks hydration, so it must NOT go there.
 const themeScript = `try{if(localStorage.getItem('theme')==='light'){document.documentElement.setAttribute('data-theme','light');}}catch(e){}`;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-      </head>
       <body>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <div style={{ display: "flex", minHeight: "100vh" }}>
           <Sidebar />
           <main style={{ flex: 1, minWidth: 0, display: "flex", justifyContent: "center" }}>
