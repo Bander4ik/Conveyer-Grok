@@ -108,7 +108,7 @@ export function Sidebar() {
             width: 30,
             height: 30,
             borderRadius: 8,
-            background: "linear-gradient(135deg, var(--accent), #b89bff)",
+            background: "linear-gradient(135deg, var(--accent), #ffd08a)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
