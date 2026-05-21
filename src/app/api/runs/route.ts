@@ -33,6 +33,8 @@ export async function POST(req: Request) {
     reuseMap?: Record<string, string>;
     /** Optional: Prompt Preset id (from /prompts presets). Snapshot is stored on the run. */
     presetId?: number | null;
+    /** Optional: true = pipeline auto-searches the library; false = manual reuseMap only. */
+    autoReuse?: boolean;
   };
   const script = (body.script ?? "").trim();
   if (!script) {
@@ -43,7 +45,11 @@ export async function POST(req: Request) {
   const baseFolderName = sanitizeFolderName(body.title ?? "", id.slice(0, 8));
   const folderName = pickAvailableFolderName(baseFolderName);
 
-  insertRun.run(id, body.title ?? null, folderName, script, JSON.stringify({}));
+  // Per-run config. autoReuse: true = pipeline auto-searches the Drive library
+  // for reusable clips; false = use only the manually-picked reuseMap below.
+  const config: Record<string, unknown> = {};
+  if (typeof body.autoReuse === "boolean") config.autoReuse = body.autoReuse;
+  insertRun.run(id, body.title ?? null, folderName, script, JSON.stringify(config));
 
   // Persist reuseMap so the pipeline can read it without callers passing options.
   // Keys are normalized to strings — they already are in JSON, but TS allowed

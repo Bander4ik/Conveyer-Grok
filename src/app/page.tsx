@@ -69,6 +69,10 @@ export default function NewRunPage() {
   // Library search scope — by default only the selected channel; opt into all.
   const [crossChannel, setCrossChannel] = useState(false);
 
+  // Library reuse mode. Auto: the pipeline finds + reuses clips itself (no
+  // clicking). Manual: preview scenes and pick clips by hand in the section below.
+  const [reuseMode, setReuseMode] = useState<"auto" | "manual">("auto");
+
   const AUTO_PICK_THRESHOLD = 80;
   const router = useRouter();
 
@@ -211,7 +215,8 @@ export default function NewRunPage() {
         script: string;
         reuseMap?: Record<number, string>;
         presetId?: number | null;
-      } = { title, script };
+        autoReuse: boolean;
+      } = { title, script, autoReuse: reuseMode === "auto" };
       if (reuseCount > 0) body.reuseMap = reuseMap;
       if (selectedPresetId != null) body.presetId = selectedPresetId;
       const r = await fetch("/api/runs", {
@@ -270,6 +275,35 @@ export default function NewRunPage() {
           </select>
           <div className="faint" style={{ fontSize: 12, marginTop: 5 }}>
             Picks the scene-split prompt, voice and motion for this channel. Manage in Channels &amp; Prompts.
+          </div>
+        </div>
+
+        <div>
+          <label className="label">Library reuse</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              className={reuseMode === "auto" ? "btn btn-sm" : "btn-secondary btn-sm"}
+              onClick={() => {
+                setReuseMode("auto");
+                setMatches(null);
+                setReuseMap({});
+              }}
+            >
+              Auto
+            </button>
+            <button
+              type="button"
+              className={reuseMode === "manual" ? "btn btn-sm" : "btn-secondary btn-sm"}
+              onClick={() => setReuseMode("manual")}
+            >
+              Manual
+            </button>
+          </div>
+          <div className="faint" style={{ fontSize: 12, marginTop: 5, lineHeight: 1.5 }}>
+            {reuseMode === "auto"
+              ? "The app searches your Drive library and reuses matching clips automatically — scenes with no match are generated. Just press Run pipeline."
+              : "Preview the scenes, search the library, and pick which clips to reuse yourself."}
           </div>
         </div>
 
@@ -347,10 +381,12 @@ export default function NewRunPage() {
             <div>
               <h2 style={{ marginBottom: 2 }}>Scene preview · {scenes.length}</h2>
               <div className="muted" style={{ fontSize: 12.5 }}>
-                Reuse clips from past runs to skip generation — saves time and credits.
+                {reuseMode === "auto"
+                  ? "Auto reuse is on — the app handles library clips for you. This is just a preview of the split."
+                  : "Reuse clips from past runs to skip generation — saves time and credits."}
               </div>
             </div>
-            {drive?.connected ? (
+            {reuseMode === "manual" && (drive?.connected ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
                 <button className="btn-secondary btn-sm" onClick={findClips} disabled={searching}>
                   {searching
@@ -383,7 +419,7 @@ export default function NewRunPage() {
               <a className="btn-secondary btn-sm" href="/settings" title="Connect Google Drive to enable library search">
                 Connect Drive to search
               </a>
-            )}
+            ))}
           </div>
 
           {matches !== null && matches.length === 0 && (

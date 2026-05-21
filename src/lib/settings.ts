@@ -218,7 +218,7 @@ export const DEFAULTS: Record<SettingKey, string> = {
 
   // Reliability / scaling
   FAILURE_THRESHOLD_PERCENT: "25",
-  AUTO_REUSE_ENABLED: "",
+  AUTO_REUSE_ENABLED: "1",
   AUTO_REUSE_THRESHOLD: "80",
 
   // Google Drive — all empty by default. User fills client_id/secret;

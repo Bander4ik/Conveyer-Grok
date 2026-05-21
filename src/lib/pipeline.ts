@@ -20,6 +20,7 @@ const getPresetSnapshotStmt = db.prepare(
   "SELECT preset_content, preset_animation_motion, preset_voice_id, preset_name FROM runs WHERE id = ?"
 );
 const getRunRowStmt = db.prepare("SELECT id, script FROM runs WHERE id = ?");
+const getRunConfigStmt = db.prepare("SELECT config_json FROM runs WHERE id = ?");
 
 const updateRun = db.prepare(
   "UPDATE runs SET status = ?, output_path = ?, updated_at = datetime('now') WHERE id = ?"
@@ -71,6 +72,22 @@ function readPresetSnapshot(runId: string): {
 function readReuseMap(runId: string): Record<string, string> {
   const row = getReuseMapStmt.get(runId) as { reuse_map_json: string | null } | undefined;
   return row?.reuse_map_json ? (JSON.parse(row.reuse_map_json) as Record<string, string>) : {};
+}
+
+/**
+ * Whether this run should auto-search the library for reusable clips.
+ * Per-run choice from the New Run page (config_json.autoReuse); falls back to
+ * the global AUTO_REUSE_ENABLED setting for runs created without it.
+ */
+function isAutoReuseRun(runId: string): boolean {
+  const row = getRunConfigStmt.get(runId) as { config_json: string | null } | undefined;
+  if (row?.config_json) {
+    try {
+      const cfg = JSON.parse(row.config_json) as { autoReuse?: unknown };
+      if (typeof cfg.autoReuse === "boolean") return cfg.autoReuse;
+    } catch {}
+  }
+  return getSetting("AUTO_REUSE_ENABLED") === "1";
 }
 
 /**
@@ -227,9 +244,9 @@ export async function runPipeline(runId: string, script: string) {
 
     const reuseMap = readReuseMap(runId);
 
-    // Auto-reuse — when enabled, the pipeline searches the library itself and
-    // folds matches into the reuse map (no Preview step / manual approval).
-    if (getSetting("AUTO_REUSE_ENABLED") === "1") {
+    // Auto-reuse — when the run is in Auto mode, the pipeline searches the
+    // library itself and folds matches into the reuse map (no Preview step).
+    if (isAutoReuseRun(runId)) {
       await applyAutoReuse(runId, scenes, reuseMap, channelFolderName(presetName));
       checkCancelled(runId);
     }

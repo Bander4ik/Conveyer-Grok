@@ -211,7 +211,7 @@ export const ALL_GROUPS: Group[] = [
   },
   {
     title: "Reliability & Scaling",
-    subtitle: "How tolerant a run is of failures, and whether the pipeline reuses library clips automatically. Matters most at high volume on unreliable nights.",
+    subtitle: "How tolerant a run is of failures, and the confidence bar for Auto library reuse. Matters most at high volume on unreliable nights.",
     fields: [
       {
         key: "FAILURE_THRESHOLD_PERCENT",
@@ -219,13 +219,8 @@ export const ALL_GROUPS: Group[] = [
         examples: "25 = default (strict)  ·  60-70 = tolerant (keep partial runs)  ·  100 = never abort",
       },
       {
-        key: "AUTO_REUSE_ENABLED",
-        desc: "When ON, the pipeline automatically searches the Google Drive library at the start of every run and reuses matching clips — no Preview step, no manual approval clicking. Requires Drive connected. The run log reports how many clips were auto-reused and how much generation was skipped.",
-        examples: "1 = auto-reuse on  ·  empty = off (manual Preview + pick)",
-      },
-      {
         key: "AUTO_REUSE_THRESHOLD",
-        desc: "Confidence percentage for auto-reuse. A scene is reused only if the best library match scores at or above this. Higher = stricter (fewer but safer reuses). Only used when AUTO_REUSE_ENABLED is on.",
+        desc: "Confidence percentage for Auto reuse. When a run is in Auto reuse mode (chosen per run on the New Run page), a scene is reused only if its best library match scores at or above this. Higher = stricter (fewer but safer reuses).",
         examples: "80 = default  ·  90 = very strict  ·  70 = aggressive reuse",
       },
     ],
