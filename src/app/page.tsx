@@ -1,6 +1,7 @@
 "use client";
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { usePersistedState } from "./_use-persisted-state";
 
 // Rough estimate: TTS narration averages ~150 words per minute
 const WORDS_PER_MINUTE = 150;
@@ -49,8 +50,9 @@ interface GdriveStatus {
 }
 
 export default function NewRunPage() {
-  const [title, setTitle] = useState("");
-  const [script, setScript] = useState("");
+  // Persisted across navigation so a pasted script isn't lost on a tab switch.
+  const [title, setTitle] = usePersistedState("newrun.title", "");
+  const [script, setScript] = usePersistedState("newrun.script", "");
   const [busy, setBusy] = useState(false);
   const [stats, setStats] = useState<StatsResp | null>(null);
   const [drive, setDrive] = useState<GdriveStatus | null>(null);
@@ -65,13 +67,19 @@ export default function NewRunPage() {
 
   // Channel profiles
   const [presets, setPresets] = useState<{ id: number; name: string }[]>([]);
-  const [selectedPresetId, setSelectedPresetId] = useState<number | null>(null);
+  const [selectedPresetId, setSelectedPresetId] = usePersistedState<number | null>(
+    "newrun.channel",
+    null
+  );
   // Library search scope — by default only the selected channel; opt into all.
   const [crossChannel, setCrossChannel] = useState(false);
 
   // Library reuse mode. Auto: the pipeline finds + reuses clips itself (no
   // clicking). Manual: preview scenes and pick clips by hand in the section below.
-  const [reuseMode, setReuseMode] = useState<"auto" | "manual">("auto");
+  const [reuseMode, setReuseMode] = usePersistedState<"auto" | "manual">(
+    "newrun.reuseMode",
+    "auto"
+  );
 
   const AUTO_PICK_THRESHOLD = 80;
   const router = useRouter();

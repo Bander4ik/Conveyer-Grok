@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { usePersistedState } from "../_use-persisted-state";
 
 interface PromptPreset {
   id: number;
@@ -51,11 +52,16 @@ export default function PromptsPage() {
   const [presets, setPresets] = useState<PromptPreset[]>([]);
   const [presetError, setPresetError] = useState<string | null>(null);
 
-  const [newName, setNewName] = useState("");
-  const [newDescription, setNewDescription] = useState("");
-  const [newVoiceId, setNewVoiceId] = useState("");
-  const [newContent, setNewContent] = useState("");
-  const [newAnimationMotion, setNewAnimationMotion] = useState("");
+  // "Add new channel" form — persisted across navigation so a half-written
+  // channel prompt survives a tab switch. Cleared on successful create.
+  const [newName, setNewName] = usePersistedState("channels.new.name", "");
+  const [newDescription, setNewDescription] = usePersistedState("channels.new.description", "");
+  const [newVoiceId, setNewVoiceId] = usePersistedState("channels.new.voiceId", "");
+  const [newContent, setNewContent] = usePersistedState("channels.new.content", "");
+  const [newAnimationMotion, setNewAnimationMotion] = usePersistedState(
+    "channels.new.animationMotion",
+    ""
+  );
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
