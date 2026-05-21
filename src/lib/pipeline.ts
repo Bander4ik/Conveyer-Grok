@@ -8,7 +8,7 @@ import { pLimit } from "./plimit";
 import { splitScript, type Scene } from "./services/scene-split";
 import { synthesizeScene, type TtsResult } from "./services/tts";
 import { animateScene } from "./services/img2vid";
-import { assembleVideo, type AssembleInput } from "./services/video-assemble";
+import { assembleVideo, probeDurationSafe, type AssembleInput } from "./services/video-assemble";
 import { getKeyCount } from "./services/labs69";
 import { syncRunToDrive, channelFolderName } from "./services/run-upload";
 import { downloadReusedClip } from "./services/reuse";
@@ -362,8 +362,7 @@ export async function resumeRun(runId: string) {
           // Audio: reuse the file on disk, else regenerate via HeyGen.
           let audio: TtsResult;
           if (fileReady(aPath)) {
-            const size = fs.statSync(aPath).size;
-            audio = { filePath: aPath, durationSec: Math.max(1, size / 16000) };
+            audio = { filePath: aPath, durationSec: await probeDurationSafe(aPath) };
           } else {
             audio = await limitTts(() => synthesizeScene(runId, scene, audioDir, { voiceOverride }));
           }

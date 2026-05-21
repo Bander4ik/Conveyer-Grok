@@ -4,11 +4,12 @@ import { getSetting } from "../settings";
 import { log } from "../logger";
 import type { Scene } from "./scene-split";
 import { createTtsJob, pollJob, downloadJob } from "./labs69";
+import { probeDurationSafe } from "./video-assemble";
 
 export interface TtsResult {
   /** Path to the mp3 file. */
   filePath: string;
-  /** Approximate duration in seconds (from file size, refined later via ffprobe). */
+  /** Audio duration in seconds, measured via ffprobe. */
   durationSec: number;
 }
 
@@ -47,12 +48,12 @@ export async function synthesizeScene(
     throw new Error(`Unknown TTS provider: ${provider}`);
   }
 
-  const stats = fs.statSync(filePath);
-  // Rough estimate: 16 KB/s for 128kbps mp3 — good enough for assembly.
-  // Real duration is read via ffprobe in video-assemble.ts.
-  const durationSec = Math.max(1, stats.size / 16000);
+  // Real audio duration via ffprobe (falls back to a file-size estimate if
+  // ffprobe is unavailable). This value feeds the run log and library manifest,
+  // so it must be accurate — a wrong estimate here once read "~12s" for a 5s clip.
+  const durationSec = await probeDurationSafe(filePath);
 
-  log(runId, "success", `TTS done: ${fileName} (~${durationSec.toFixed(1)}s)`, {
+  log(runId, "success", `TTS done: ${fileName} (${durationSec.toFixed(1)}s)`, {
     stage: "tts",
   });
   return { filePath, durationSec };

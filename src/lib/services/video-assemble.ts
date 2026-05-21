@@ -29,13 +29,7 @@ export async function assembleVideo(
   scenes: AssembleInput[],
   outDir: string
 ): Promise<string> {
-  const ffmpegPath = getSetting("FFMPEG_PATH");
-  if (ffmpegPath) {
-    ffmpeg.setFfmpegPath(ffmpegPath);
-    // ffprobe lives next to ffmpeg in the same bin/ folder
-    const ffprobePath = ffmpegPath.replace(/ffmpeg(\.exe)?$/i, "ffprobe$1");
-    if (fs.existsSync(ffprobePath)) ffmpeg.setFfprobePath(ffprobePath);
-  }
+  ensureFfmpegPaths();
 
   const resolution = getSetting("VIDEO_RESOLUTION") || "1920x1080";
   const fps = Number(getSetting("VIDEO_FPS") || "30");
@@ -107,6 +101,16 @@ export async function assembleVideo(
   return finalPath;
 }
 
+/** Points fluent-ffmpeg at the ffmpeg/ffprobe binaries from the FFMPEG_PATH setting. */
+function ensureFfmpegPaths(): void {
+  const ffmpegPath = getSetting("FFMPEG_PATH");
+  if (!ffmpegPath) return;
+  ffmpeg.setFfmpegPath(ffmpegPath);
+  // ffprobe lives next to ffmpeg in the same bin/ folder
+  const ffprobePath = ffmpegPath.replace(/ffmpeg(\.exe)?$/i, "ffprobe$1");
+  if (fs.existsSync(ffprobePath)) ffmpeg.setFfprobePath(ffprobePath);
+}
+
 /** Reads the exact audio duration via ffprobe. */
 function probeDuration(filePath: string): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -121,6 +125,27 @@ function probeDuration(filePath: string): Promise<number> {
       resolve(d);
     });
   });
+}
+
+/**
+ * Best-effort media duration in seconds — safe to call from any pipeline stage.
+ *
+ * Unlike probeDuration(), this sets the ffmpeg/ffprobe paths first, so it works
+ * standalone (e.g. from tts.ts right after a file is written, long before
+ * assembleVideo runs). On ANY ffprobe failure it falls back to a rough
+ * file-size estimate and never throws.
+ */
+export async function probeDurationSafe(filePath: string): Promise<number> {
+  try {
+    ensureFfmpegPaths();
+    return await probeDuration(filePath);
+  } catch {
+    try {
+      return Math.max(1, fs.statSync(filePath).size / 16000);
+    } catch {
+      return 1;
+    }
+  }
 }
 
 /**
