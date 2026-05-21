@@ -66,6 +66,8 @@ export default function NewRunPage() {
   // Channel profiles
   const [presets, setPresets] = useState<{ id: number; name: string }[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState<number | null>(null);
+  // Library search scope — by default only the selected channel; opt into all.
+  const [crossChannel, setCrossChannel] = useState(false);
 
   const AUTO_PICK_THRESHOLD = 80;
   const router = useRouter();
@@ -170,10 +172,16 @@ export default function NewRunPage() {
     if (!scenes) return;
     setSearching(true);
     try {
+      // Scope the search: the selected channel by default, or every channel
+      // when the cross-channel toggle is on.
+      const channelName =
+        selectedPresetId != null
+          ? (presets.find((p) => p.id === selectedPresetId)?.name ?? "_No Channel")
+          : "_No Channel";
       const r = await fetch("/api/library/find-similar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenes }),
+        body: JSON.stringify({ scenes, channel: crossChannel ? null : channelName }),
       });
       const j = await r.json();
       if (!r.ok) {
@@ -343,13 +351,34 @@ export default function NewRunPage() {
               </div>
             </div>
             {drive?.connected ? (
-              <button className="btn-secondary btn-sm" onClick={findClips} disabled={searching}>
-                {searching
-                  ? "Searching library…"
-                  : matches
-                    ? "Search again"
-                    : "Find existing clips"}
-              </button>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                <button className="btn-secondary btn-sm" onClick={findClips} disabled={searching}>
+                  {searching
+                    ? "Searching library…"
+                    : matches
+                      ? "Search again"
+                      : "Find existing clips"}
+                </button>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 11.5,
+                    color: "var(--fg-muted)",
+                    cursor: "pointer",
+                  }}
+                  title="By default the search is scoped to the selected channel. Tick this to search across every channel."
+                >
+                  <input
+                    type="checkbox"
+                    checked={crossChannel}
+                    onChange={(e) => setCrossChannel(e.target.checked)}
+                    style={{ accentColor: "var(--accent)" }}
+                  />
+                  Search all channels
+                </label>
+              </div>
             ) : (
               <a className="btn-secondary btn-sm" href="/settings" title="Connect Google Drive to enable library search">
                 Connect Drive to search

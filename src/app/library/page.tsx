@@ -19,6 +19,7 @@ interface LibraryRun {
   run_id: string;
   run_title: string | null;
   folder_name: string;
+  channel: string;
   created_at: string;
   scene_count: number;
   uploaded_clip_count: number;
@@ -87,6 +88,21 @@ export default function LibraryPage() {
     });
   }, [runs, query]);
 
+  // Group runs by channel — channels alphabetical, "_No Channel" last.
+  const grouped = useMemo(() => {
+    const m = new Map<string, LibraryRun[]>();
+    for (const r of filtered) {
+      const list = m.get(r.channel) ?? [];
+      list.push(r);
+      m.set(r.channel, list);
+    }
+    return [...m.entries()].sort(([a], [b]) => {
+      if (a === "_No Channel") return 1;
+      if (b === "_No Channel") return -1;
+      return a.localeCompare(b);
+    });
+  }, [filtered]);
+
   return (
     <div>
       <h1>Library</h1>
@@ -147,10 +163,18 @@ export default function LibraryPage() {
             </span>
           </div>
 
-          <div style={{ display: "grid", gap: 12 }}>
-            {filtered.map((r) => {
-              const isOpen = openRunId === r.drive_folder_id;
-              return (
+          {grouped.map(([channel, channelRuns]) => (
+            <div key={channel} style={{ marginBottom: 26 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <h2 style={{ margin: 0 }}>{channel === "_No Channel" ? "No channel" : channel}</h2>
+                <span className="badge badge-neutral">
+                  {channelRuns.length} run{channelRuns.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div style={{ display: "grid", gap: 12 }}>
+                {channelRuns.map((r) => {
+                  const isOpen = openRunId === r.drive_folder_id;
+                  return (
                 <div key={r.drive_folder_id} className="card">
                   <div
                     style={{
@@ -248,10 +272,12 @@ export default function LibraryPage() {
                       ))}
                     </div>
                   )}
-                </div>
-              );
-            })}
-          </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </>
       )}
     </div>

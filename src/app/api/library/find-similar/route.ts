@@ -7,12 +7,15 @@ interface Body {
   scenes?: Scene[];
   minScore?: number;
   topPerScene?: number;
+  /** Channel name to scope the search to. Omit / null = search every channel. */
+  channel?: string | null;
 }
 
 /**
- * Body: { scenes: Scene[], minScore?: number, topPerScene?: number }
+ * Body: { scenes: Scene[], minScore?, topPerScene?, channel? }
  * Returns { matches: ClipMatch[] } — possibly empty if the library has no
- * relevant clips. Throws 400 when payload is missing scenes.
+ * relevant clips. When `channel` is given, only that channel's clips are
+ * searched; omit it (cross-channel toggle) to search every channel.
  */
 export async function POST(req: Request) {
   ensureInit();
@@ -30,6 +33,7 @@ export async function POST(req: Request) {
     const matches = await findSimilarClips(body.scenes, {
       minScore: body.minScore,
       topPerScene: body.topPerScene,
+      channel: body.channel || undefined,
     });
     return NextResponse.json({ matches });
   } catch (e) {

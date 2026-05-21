@@ -10,13 +10,14 @@ import { synthesizeScene, type TtsResult } from "./services/tts";
 import { animateScene } from "./services/img2vid";
 import { assembleVideo, type AssembleInput } from "./services/video-assemble";
 import { getKeyCount } from "./services/labs69";
-import { syncRunToDrive } from "./services/run-upload";
+import { syncRunToDrive, channelFolderName } from "./services/run-upload";
 import { downloadReusedClip } from "./services/reuse";
+import { findSimilarClips } from "./services/library";
 import { checkCancelled, clearCancelled, CancelledError } from "./cancellation";
 
 const getReuseMapStmt = db.prepare("SELECT reuse_map_json FROM runs WHERE id = ?");
 const getPresetSnapshotStmt = db.prepare(
-  "SELECT preset_content, preset_animation_motion, preset_voice_id FROM runs WHERE id = ?"
+  "SELECT preset_content, preset_animation_motion, preset_voice_id, preset_name FROM runs WHERE id = ?"
 );
 const getRunRowStmt = db.prepare("SELECT id, script FROM runs WHERE id = ?");
 
@@ -48,18 +49,21 @@ function readPresetSnapshot(runId: string): {
   scenePrompt: string | undefined;
   motionOverride: string | null;
   voiceOverride: string | null;
+  presetName: string | null;
 } {
   const row = getPresetSnapshotStmt.get(runId) as
     | {
         preset_content: string | null;
         preset_animation_motion: string | null;
         preset_voice_id: string | null;
+        preset_name: string | null;
       }
     | undefined;
   return {
     scenePrompt: row?.preset_content ?? undefined,
     motionOverride: row?.preset_animation_motion ?? null,
     voiceOverride: row?.preset_voice_id ?? null,
+    presetName: row?.preset_name ?? null,
   };
 }
 
@@ -67,6 +71,61 @@ function readPresetSnapshot(runId: string): {
 function readReuseMap(runId: string): Record<string, string> {
   const row = getReuseMapStmt.get(runId) as { reuse_map_json: string | null } | undefined;
   return row?.reuse_map_json ? (JSON.parse(row.reuse_map_json) as Record<string, string>) : {};
+}
+
+/**
+ * When AUTO_REUSE_ENABLED is on, the pipeline searches the Drive library
+ * itself and folds high-confidence matches into the reuse map — no Preview
+ * step, no manual approval clicking. Mutates `reuseMap` in place.
+ * Best-effort: a search failure just logs and the run proceeds with full
+ * generation. Scenes the user already picked manually are left untouched.
+ */
+async function applyAutoReuse(
+  runId: string,
+  scenes: Scene[],
+  reuseMap: Record<string, string>,
+  channel: string
+): Promise<void> {
+  const threshold = Math.max(
+    0,
+    Math.min(100, Number(getSetting("AUTO_REUSE_THRESHOLD") || "80"))
+  );
+  try {
+    log(
+      runId,
+      "info",
+      `Auto-reuse on — searching the "${channel}" library for clips matching at >=${threshold}%`,
+      { stage: "reuse" }
+    );
+    // Auto-reuse stays within the run's own channel so a channel never pulls
+    // off-brand clips from a different channel.
+    const matches = await findSimilarClips(scenes, { minScore: threshold, channel });
+    const bestByScene = new Map<number, { id: string; score: number }>();
+    for (const m of matches) {
+      const cur = bestByScene.get(m.new_scene_index);
+      if (!cur || m.score > cur.score) {
+        bestByScene.set(m.new_scene_index, { id: m.drive_file_id, score: m.score });
+      }
+    }
+    let picked = 0;
+    for (const [sceneIdx, best] of bestByScene) {
+      if (best.score >= threshold && !reuseMap[String(sceneIdx)]) {
+        reuseMap[String(sceneIdx)] = best.id;
+        picked++;
+      }
+    }
+    log(
+      runId,
+      "success",
+      `Auto-reuse: ${picked}/${scenes.length} scene${picked === 1 ? "" : "s"} matched the library — Grok generation skipped for them (~${picked} video credit${picked === 1 ? "" : "s"} saved)`,
+      { stage: "reuse" }
+    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    log(runId, "warn", `Auto-reuse search failed — continuing with full generation: ${msg.slice(0, 150)}`, {
+      stage: "reuse",
+    });
+  }
 }
 
 /** Per-key × key-count concurrency limiters for TTS and video. */
@@ -161,18 +220,26 @@ export async function runPipeline(runId: string, script: string) {
 
     // 1. Split script into scenes — channel profile snapshot drives the prompt,
     //    voice and motion overrides.
-    const { scenePrompt, motionOverride, voiceOverride } = readPresetSnapshot(runId);
+    const { scenePrompt, motionOverride, voiceOverride, presetName } = readPresetSnapshot(runId);
     const scenes = await splitScript(runId, script, scenePrompt);
     checkCancelled(runId);
     fs.writeFileSync(path.join(runDir, "scenes.json"), JSON.stringify(scenes, null, 2), "utf-8");
 
     const reuseMap = readReuseMap(runId);
+
+    // Auto-reuse — when enabled, the pipeline searches the library itself and
+    // folds matches into the reuse map (no Preview step / manual approval).
+    if (getSetting("AUTO_REUSE_ENABLED") === "1") {
+      await applyAutoReuse(runId, scenes, reuseMap, channelFolderName(presetName));
+      checkCancelled(runId);
+    }
+
     const reuseCount = Object.keys(reuseMap).length;
     if (reuseCount > 0) {
       log(
         runId,
         "info",
-        `Reusing ${reuseCount} clip${reuseCount === 1 ? "" : "s"} from library — those scenes skip Grok generation`,
+        `${reuseCount} scene${reuseCount === 1 ? "" : "s"} will reuse an existing clip — those skip Grok generation`,
         { stage: "reuse", data: { reuseMap } }
       );
     }

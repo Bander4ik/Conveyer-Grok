@@ -17,6 +17,8 @@ export interface LibraryRunSummary {
   run_id: string;
   run_title: string | null;
   folder_name: string;
+  /** Channel this run belongs to ("_No Channel" if none). */
+  channel: string;
   created_at: string;
   scene_count: number;
   uploaded_clip_count: number;
@@ -43,6 +45,7 @@ interface RawManifest {
   run_id?: string;
   run_title?: string | null;
   folder_name?: string;
+  channel?: string;
   created_at?: string;
   scene_count?: number;
   settings_snapshot?: {
@@ -61,88 +64,119 @@ interface RawManifest {
   }>;
 }
 
-/** Lists every run in the user's Drive Clips Library, newest first. */
+/** Drive client type — the non-null return of getDriveClient(). */
+type DriveClient = NonNullable<ReturnType<typeof getDriveClient>>;
+
+/** Reads one run folder's clips.json into a LibraryRunSummary. Null if missing/invalid. */
+async function readRunFolder(
+  drive: DriveClient,
+  folder: { id: string; name: string; createdTime?: string | null },
+  channelFallback: string
+): Promise<LibraryRunSummary | null> {
+  try {
+    const found = await drive.files.list({
+      q: `'${folder.id}' in parents and name='clips.json' and trashed=false`,
+      fields: "files(id)",
+      pageSize: 1,
+    });
+    const clipsJsonId = found.data.files?.[0]?.id;
+    if (!clipsJsonId) return null;
+
+    const res = await drive.files.get(
+      { fileId: clipsJsonId, alt: "media" },
+      { responseType: "text" }
+    );
+    let manifest: RawManifest;
+    if (typeof res.data === "string") {
+      try {
+        manifest = JSON.parse(res.data) as RawManifest;
+      } catch {
+        return null;
+      }
+    } else {
+      manifest = res.data as RawManifest;
+    }
+
+    const clips: LibraryClip[] = (manifest.clips ?? []).map((c) => ({
+      index: Number(c.index ?? 0),
+      file: String(c.file ?? ""),
+      drive_file_id: String(c.drive_file_id ?? ""),
+      drive_file_link: c.drive_file_id
+        ? `https://drive.google.com/file/d/${c.drive_file_id}/view`
+        : "",
+      scene_text: String(c.scene_text ?? ""),
+      visual_prompt: String(c.visual_prompt ?? ""),
+      duration_hint_sec: Number(c.duration_hint_sec ?? 0),
+      audio_duration_sec: c.audio_duration_sec ?? null,
+    }));
+
+    return {
+      drive_folder_id: folder.id,
+      drive_folder_name: folder.name,
+      drive_folder_link: `https://drive.google.com/drive/folders/${folder.id}`,
+      run_id: String(manifest.run_id ?? ""),
+      run_title: manifest.run_title ?? null,
+      folder_name: String(manifest.folder_name ?? folder.name),
+      channel: String(manifest.channel ?? channelFallback),
+      created_at: String(manifest.created_at ?? folder.createdTime ?? ""),
+      scene_count: Number(manifest.scene_count ?? clips.length),
+      uploaded_clip_count: clips.length,
+      settings: {
+        animation_provider: String(manifest.settings_snapshot?.animation_provider ?? ""),
+        animation_model: String(manifest.settings_snapshot?.animation_model ?? ""),
+        video_resolution: String(manifest.settings_snapshot?.video_resolution ?? ""),
+      },
+      clips,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Lists every run in the user's Drive Clips Library, newest first.
+ * The library is two levels deep: Clips Library / {channel} / {run} — so we
+ * walk channel folders, then the run folders inside each.
+ */
 export async function listLibraryRuns(): Promise<LibraryRunSummary[]> {
   const drive = getDriveClient();
   if (!drive) return [];
 
   const { clipsLibraryId } = await ensureTopLevelFolders();
 
-  // List all per-run sub-folders inside Clips Library
-  const folders = await drive.files.list({
+  // Level 1 — channel folders
+  const channelFolders = await drive.files.list({
     q: `'${clipsLibraryId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-    fields: "files(id, name, createdTime)",
+    fields: "files(id, name)",
     pageSize: 500,
-    orderBy: "createdTime desc",
   });
 
-  const items = await Promise.all(
-    (folders.data.files ?? []).map(async (folder): Promise<LibraryRunSummary | null> => {
-      if (!folder.id || !folder.name) return null;
-      try {
-        // Find clips.json inside this run's folder
-        const found = await drive.files.list({
-          q: `'${folder.id}' in parents and name='clips.json' and trashed=false`,
-          fields: "files(id)",
-          pageSize: 1,
-        });
-        const clipsJsonId = found.data.files?.[0]?.id;
-        if (!clipsJsonId) return null;
+  const summaries: LibraryRunSummary[] = [];
+  for (const ch of channelFolders.data.files ?? []) {
+    if (!ch.id) continue;
+    const channelName = ch.name ?? "_No Channel";
 
-        // Download clips.json content
-        const res = await drive.files.get(
-          { fileId: clipsJsonId, alt: "media" },
-          { responseType: "text" }
-        );
-        // `data` may already be parsed (axios sometimes does that) or a raw string
-        let manifest: RawManifest;
-        if (typeof res.data === "string") {
-          try {
-            manifest = JSON.parse(res.data) as RawManifest;
-          } catch {
-            return null;
-          }
-        } else {
-          manifest = res.data as RawManifest;
-        }
+    // Level 2 — run folders inside this channel
+    const runFolders = await drive.files.list({
+      q: `'${ch.id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      fields: "files(id, name, createdTime)",
+      pageSize: 500,
+      orderBy: "createdTime desc",
+    });
 
-        const clips: LibraryClip[] = (manifest.clips ?? []).map((c) => ({
-          index: Number(c.index ?? 0),
-          file: String(c.file ?? ""),
-          drive_file_id: String(c.drive_file_id ?? ""),
-          drive_file_link: c.drive_file_id
-            ? `https://drive.google.com/file/d/${c.drive_file_id}/view`
-            : "",
-          scene_text: String(c.scene_text ?? ""),
-          visual_prompt: String(c.visual_prompt ?? ""),
-          duration_hint_sec: Number(c.duration_hint_sec ?? 0),
-          audio_duration_sec: c.audio_duration_sec ?? null,
-        }));
+    const runResults = await Promise.all(
+      (runFolders.data.files ?? []).map((rf) =>
+        rf.id && rf.name
+          ? readRunFolder(drive, { id: rf.id, name: rf.name, createdTime: rf.createdTime }, channelName)
+          : Promise.resolve(null)
+      )
+    );
+    for (const r of runResults) if (r) summaries.push(r);
+  }
 
-        return {
-          drive_folder_id: folder.id,
-          drive_folder_name: folder.name,
-          drive_folder_link: `https://drive.google.com/drive/folders/${folder.id}`,
-          run_id: String(manifest.run_id ?? ""),
-          run_title: manifest.run_title ?? null,
-          folder_name: String(manifest.folder_name ?? folder.name),
-          created_at: String(manifest.created_at ?? folder.createdTime ?? ""),
-          scene_count: Number(manifest.scene_count ?? clips.length),
-          uploaded_clip_count: clips.length,
-          settings: {
-            animation_provider: String(manifest.settings_snapshot?.animation_provider ?? ""),
-            animation_model: String(manifest.settings_snapshot?.animation_model ?? ""),
-            video_resolution: String(manifest.settings_snapshot?.video_resolution ?? ""),
-          },
-          clips,
-        };
-      } catch {
-        return null;
-      }
-    })
-  );
-
-  return items.filter((x): x is LibraryRunSummary => x !== null);
+  // Newest first across all channels
+  summaries.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  return summaries;
 }
 
 export interface ClipMatch {
@@ -173,15 +207,23 @@ export interface ClipMatch {
  */
 export async function findSimilarClips(
   newScenes: Scene[],
-  options: { minScore?: number; topPerScene?: number } = {}
+  options: { minScore?: number; topPerScene?: number; channel?: string } = {}
 ): Promise<ClipMatch[]> {
   const minScore = options.minScore ?? 60;
   const topPerScene = options.topPerScene ?? 3;
 
-  const runs = await listLibraryRuns();
+  let runs = await listLibraryRuns();
   if (runs.length === 0) return [];
 
-  // Build a flat list of every clip in the library, with metadata + source.
+  // Per-channel scoping: when a channel is given, only that channel's clips
+  // are eligible — keeps a Mediterranean channel from reusing Shaolin clips.
+  // Pass no `channel` (undefined) to search across every channel.
+  if (options.channel) {
+    runs = runs.filter((r) => r.channel === options.channel);
+    if (runs.length === 0) return [];
+  }
+
+  // Build a flat list of every clip in the (filtered) library.
   const allClips: Array<{ clip: LibraryClip; source: LibraryRunSummary }> = [];
   for (const r of runs) for (const c of r.clips) allClips.push({ clip: c, source: r });
   if (allClips.length === 0) return [];

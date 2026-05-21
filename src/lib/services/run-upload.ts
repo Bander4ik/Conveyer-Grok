@@ -37,6 +37,8 @@ interface ClipsManifest {
   run_id: string;
   run_title: string | null;
   folder_name: string;
+  /** Channel profile name this run used, or "_No Channel". Drives per-channel library filtering. */
+  channel: string;
   created_at: string;
   scene_count: number;
   settings_snapshot: {
@@ -50,8 +52,14 @@ interface ClipsManifest {
 }
 
 const getRunRow = db.prepare(
-  "SELECT title, folder_name FROM runs WHERE id = ?"
+  "SELECT title, folder_name, preset_name FROM runs WHERE id = ?"
 );
+
+/** Channel folder name for a run — the channel profile name, or a shared bucket. */
+export function channelFolderName(presetName: string | null | undefined): string {
+  const n = (presetName ?? "").trim();
+  return n.length > 0 ? n : "_No Channel";
+}
 
 const updateDriveRefs = db.prepare(
   "UPDATE runs SET drive_clips_folder_id = ?, drive_final_video_id = ?, drive_synced_at = datetime('now') WHERE id = ?"
@@ -103,17 +111,23 @@ export async function syncRunToDrive(
   }
 
   const runRow = getRunRow.get(runId) as
-    | { title: string | null; folder_name: string | null }
+    | { title: string | null; folder_name: string | null; preset_name: string | null }
     | undefined;
   const folderName = runRow?.folder_name ?? path.basename(runDir);
   const title = runRow?.title ?? null;
+  const channel = channelFolderName(runRow?.preset_name);
 
-  log(runId, "info", `Drive sync starting · folder: ${folderName}`, { stage: "gdrive" });
+  log(runId, "info", `Drive sync starting · channel: ${channel} · folder: ${folderName}`, {
+    stage: "gdrive",
+  });
 
   const { finalVideosId, clipsLibraryId } = await ensureTopLevelFolders();
 
-  // Per-run sub-folder inside Clips Library
-  const runFolderId = await findOrCreateFolder(folderName, clipsLibraryId);
+  // Per-channel sub-folder inside Clips Library, then the per-run folder inside
+  // it: Clips Library / {channel} / {run}. Keeps every channel's clips isolated
+  // so library search stays on-brand instead of mixing 16 channels together.
+  const channelFolderId = await findOrCreateFolder(channel, clipsLibraryId);
+  const runFolderId = await findOrCreateFolder(folderName, channelFolderId);
 
   // 1. Upload raw clips (animations/scene_*.mp4 — Veo output before voiceover)
   const uploadedClips: ClipsManifestEntry[] = [];
@@ -154,6 +168,7 @@ export async function syncRunToDrive(
     run_id: runId,
     run_title: title,
     folder_name: folderName,
+    channel,
     created_at: new Date().toISOString(),
     scene_count: sceneAssets.length,
     settings_snapshot: {
