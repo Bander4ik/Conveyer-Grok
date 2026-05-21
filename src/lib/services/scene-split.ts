@@ -60,12 +60,14 @@ export async function splitScript(
     throw new Error("scene_split: model did not return a JSON array");
   }
 
-  const scenes: Scene[] = json.map((s, i) => ({
-    index: i,
-    text: String(s.text ?? ""),
-    visual_prompt: String(s.visual_prompt ?? ""),
-    duration_hint_sec: Number(s.duration_hint_sec ?? 6),
-  }));
+  const scenes: Scene[] = enforceMaxSceneLength(
+    json.map((s, i) => ({
+      index: i,
+      text: String(s.text ?? ""),
+      visual_prompt: String(s.visual_prompt ?? ""),
+      duration_hint_sec: Number(s.duration_hint_sec ?? 6),
+    }))
+  );
 
   // Coverage check: words in scene.text vs original script.
   // If coverage < 70%, the model probably summarized — warn the user.
@@ -110,12 +112,55 @@ export async function splitScriptPreview(
   else throw new Error(`Unknown SCENE_SPLIT_PROVIDER: ${provider}`);
   const json = extractJson(raw);
   if (!Array.isArray(json)) throw new Error("Model did not return a JSON array");
-  return json.map((s, i) => ({
-    index: i,
-    text: String(s.text ?? ""),
-    visual_prompt: String(s.visual_prompt ?? ""),
-    duration_hint_sec: Number(s.duration_hint_sec ?? 6),
-  }));
+  return enforceMaxSceneLength(
+    json.map((s, i) => ({
+      index: i,
+      text: String(s.text ?? ""),
+      visual_prompt: String(s.visual_prompt ?? ""),
+      duration_hint_sec: Number(s.duration_hint_sec ?? 6),
+    }))
+  );
+}
+
+/**
+ * HARD GUARD against over-long scenes.
+ *
+ * Grok via 69labs returns a fixed ~6-second clip. If a scene's narration is
+ * longer than the clip, the video freezes on the last frame for the overflow.
+ * The scene_split prompt tells the LLM to keep scenes short, but the LLM does
+ * not always obey — so we enforce it in code here, no matter what the LLM did.
+ *
+ * Any scene whose text exceeds MAX_SCENE_WORDS is split into the fewest equal
+ * word-boundary chunks that all fit. Splitting only on word boundaries keeps
+ * the joined text identical, so script coverage stays 100%. The split halves
+ * share the original scene's visual_prompt (same visual world).
+ *
+ * MAX_SCENE_WORDS is deliberately conservative (~5.5s even on a slow ~108wpm
+ * HeyGen voice) so the clip always covers the audio with motion to spare.
+ */
+const MAX_SCENE_WORDS = 11;
+
+function enforceMaxSceneLength(scenes: Scene[]): Scene[] {
+  const out: Scene[] = [];
+  for (const s of scenes) {
+    const words = s.text.trim().split(/\s+/).filter(Boolean);
+    if (words.length <= MAX_SCENE_WORDS) {
+      out.push(s);
+      continue;
+    }
+    const chunkCount = Math.ceil(words.length / MAX_SCENE_WORDS);
+    const perChunk = Math.ceil(words.length / chunkCount);
+    for (let i = 0; i < words.length; i += perChunk) {
+      const chunkWords = words.slice(i, i + perChunk);
+      out.push({
+        index: 0, // reindexed below
+        text: chunkWords.join(" "),
+        visual_prompt: s.visual_prompt,
+        duration_hint_sec: Math.min(6, Math.max(2, Math.round((chunkWords.length / 150) * 60))),
+      });
+    }
+  }
+  return out.map((s, i) => ({ ...s, index: i }));
 }
 
 async function splitWithGemini(systemPrompt: string, script: string): Promise<string> {
