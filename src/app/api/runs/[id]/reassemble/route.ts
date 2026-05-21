@@ -1,28 +1,37 @@
 import { NextResponse } from "next/server";
+import { ensureInit } from "@/lib/init";
+import { resumeRun, canResumeRun } from "@/lib/pipeline";
 
 /**
- * DEPRECATED in Conveyer Grok.
+ * Resume a failed / partial run.
  *
- * The original "smart reassemble" route was inherited from Conveyer Isabell,
- * which had a Ken-Burns-on-images flow (images + audio → final.mp4).
- * Conveyer Grok is video-only — every scene is a Grok clip in `animations/`,
- * not a still image — so the old reassemble logic (refill missing images via
- * generateImage) does not apply.
+ * Reads the run's saved scenes.json, keeps every scene whose audio + video
+ * are already on disk, and regenerates ONLY the missing ones — then
+ * re-assembles the final video and re-uploads to Drive. The work runs in the
+ * background; the run page streams its logs like a normal run.
  *
- * A Conveyer-Grok-aware reassemble would refill missing `animations/scene_N.mp4`
- * via `animateScene` from `img2vid.ts`. That's a TODO — for now, the route is
- * disabled to prevent users from clicking a button that produces broken output.
- *
- * If you reach this endpoint, either:
- *   1. Just re-run the pipeline from /  (the library can reuse existing clips).
- *   2. Wait for Conveyer-Grok-aware reassemble to be implemented.
+ * (URL is `/reassemble` for legacy reasons — the user-facing action is "Resume".)
  */
-export async function POST() {
-  return NextResponse.json(
-    {
-      error:
-        "Reassemble is disabled in Conveyer Grok. Re-run the pipeline from /  — the library reuse will skip scenes whose clips already exist on Drive.",
-    },
-    { status: 410 }
-  );
+export async function POST(_: Request, ctx: { params: Promise<{ id: string }> }) {
+  ensureInit();
+  const { id } = await ctx.params;
+
+  if (!canResumeRun(id)) {
+    return NextResponse.json(
+      {
+        error:
+          "This run can't be resumed — there's no saved scene plan (scenes.json) on disk, " +
+          "which usually means it failed before scene-splitting finished. Start a fresh run instead.",
+      },
+      { status: 400 }
+    );
+  }
+
+  // Fire-and-forget — the run page streams logs over SSE.
+  resumeRun(id).catch((e) => {
+    // eslint-disable-next-line no-console
+    console.error("resume crash", e);
+  });
+
+  return NextResponse.json({ ok: true });
 }

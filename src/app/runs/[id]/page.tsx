@@ -48,6 +48,7 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
   const [assets, setAssets] = useState<AssetsResponse | null>(null);
   const [drive, setDrive] = useState<DriveStatus | null>(null);
   const [uploadingDrive, setUploadingDrive] = useState(false);
+  const [resuming, setResuming] = useState(false);
   const tail = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -118,6 +119,20 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
     }
   }
 
+  async function resume() {
+    setResuming(true);
+    try {
+      const r = await fetch(`/api/runs/${id}/reassemble`, { method: "POST" });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}) as { error?: string });
+        alert(`Couldn't resume this run:\n\n${j.error || r.statusText}`);
+      }
+      // on success the run flips to "running" and the log stream takes over
+    } finally {
+      setResuming(false);
+    }
+  }
+
   const fileUrl = (p: string, dl = false) =>
     `/api/runs/${id}/file?p=${encodeURIComponent(p)}${dl ? "&download=1" : ""}`;
 
@@ -145,6 +160,28 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
           {run && <span className={`tag tag-${run.status}`}>{run.status}</span>}
         </div>
       </div>
+
+      {/* ─── Resume banner — failed/cancelled run with assets on disk ────── */}
+      {(run?.status === "error" || run?.status === "cancelled") &&
+        assets &&
+        assets.scenes.length > 0 &&
+        !assets.finalExists && (
+          <div
+            className="card"
+            style={{ marginBottom: 14, borderColor: "rgba(252,211,77,0.4)" }}
+          >
+            <h2 style={{ marginBottom: 6 }}>Run incomplete — can be resumed</h2>
+            <p className="muted" style={{ fontSize: 13, marginBottom: 12, lineHeight: 1.55 }}>
+              {assets.scenes.length} scene{assets.scenes.length === 1 ? "" : "s"} already have
+              assets on disk. <strong style={{ color: "var(--fg)" }}>Resume</strong> regenerates
+              only the missing scenes, then re-assembles the final video and re-uploads to Drive —
+              clips you already paid for are not regenerated.
+            </p>
+            <button className="btn" onClick={resume} disabled={resuming}>
+              {resuming ? "Resuming…" : "Resume run"}
+            </button>
+          </div>
+        )}
 
       {/* ─── Final video ────────────────────────────────────────────────── */}
       {assets?.finalExists && (

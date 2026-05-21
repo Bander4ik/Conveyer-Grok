@@ -5,23 +5,147 @@ import { log } from "./logger";
 import { getSetting } from "./settings";
 import { getRunDir } from "./run-paths";
 import { pLimit } from "./plimit";
-import { splitScript } from "./services/scene-split";
-import { synthesizeScene } from "./services/tts";
+import { splitScript, type Scene } from "./services/scene-split";
+import { synthesizeScene, type TtsResult } from "./services/tts";
 import { animateScene } from "./services/img2vid";
 import { assembleVideo, type AssembleInput } from "./services/video-assemble";
 import { getKeyCount } from "./services/labs69";
 import { syncRunToDrive } from "./services/run-upload";
 import { downloadReusedClip } from "./services/reuse";
+import { checkCancelled, clearCancelled, CancelledError } from "./cancellation";
 
 const getReuseMapStmt = db.prepare("SELECT reuse_map_json FROM runs WHERE id = ?");
 const getPresetSnapshotStmt = db.prepare(
   "SELECT preset_content, preset_animation_motion, preset_voice_id FROM runs WHERE id = ?"
 );
-import { checkCancelled, clearCancelled, CancelledError } from "./cancellation";
+const getRunRowStmt = db.prepare("SELECT id, script FROM runs WHERE id = ?");
 
 const updateRun = db.prepare(
   "UPDATE runs SET status = ?, output_path = ?, updated_at = datetime('now') WHERE id = ?"
 );
+
+/** A scene's generated assets, ready for assembly. */
+type SceneResult = AssembleInput | null;
+
+/** scene index → padded asset file paths. */
+function audioPathFor(audioDir: string, index: number): string {
+  return path.join(audioDir, `scene_${String(index).padStart(3, "0")}.mp3`);
+}
+function videoPathFor(animDir: string, index: number): string {
+  return path.join(animDir, `scene_${String(index).padStart(3, "0")}.mp4`);
+}
+/** True only if the file exists AND is non-empty (guards against broken/0-byte files). */
+function fileReady(p: string): boolean {
+  try {
+    return fs.statSync(p).size > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Read the per-channel overrides snapshotted onto the run row. */
+function readPresetSnapshot(runId: string): {
+  scenePrompt: string | undefined;
+  motionOverride: string | null;
+  voiceOverride: string | null;
+} {
+  const row = getPresetSnapshotStmt.get(runId) as
+    | {
+        preset_content: string | null;
+        preset_animation_motion: string | null;
+        preset_voice_id: string | null;
+      }
+    | undefined;
+  return {
+    scenePrompt: row?.preset_content ?? undefined,
+    motionOverride: row?.preset_animation_motion ?? null,
+    voiceOverride: row?.preset_voice_id ?? null,
+  };
+}
+
+/** Read the reuse map (scene index → Drive file id) the user picked on New Run. */
+function readReuseMap(runId: string): Record<string, string> {
+  const row = getReuseMapStmt.get(runId) as { reuse_map_json: string | null } | undefined;
+  return row?.reuse_map_json ? (JSON.parse(row.reuse_map_json) as Record<string, string>) : {};
+}
+
+/** Per-key × key-count concurrency limiters for TTS and video. */
+function makeLimiters() {
+  const keyCount = Math.max(1, getKeyCount());
+  const ttsPerKey = Math.max(1, Number(getSetting("TTS_CONCURRENCY") || "3"));
+  const animPerKey = Math.max(1, Number(getSetting("ANIMATION_CONCURRENCY") || "3"));
+  return {
+    keyCount,
+    ttsPerKey,
+    animPerKey,
+    limitTts: pLimit(ttsPerKey * keyCount),
+    limitAnim: pLimit(animPerKey * keyCount),
+  };
+}
+
+/**
+ * Logs the failure tally and throws if the failure rate is over the
+ * user-configured threshold. Shared by runPipeline and resumeRun.
+ */
+function enforceFailureThreshold(runId: string, totalScenes: number, succeeded: number): void {
+  const failedCount = totalScenes - succeeded;
+  if (failedCount <= 0) return;
+  const failedPct = (failedCount / totalScenes) * 100;
+  const threshold = Math.max(
+    0,
+    Math.min(100, Number(getSetting("FAILURE_THRESHOLD_PERCENT") || "25"))
+  );
+  const over = failedPct > threshold;
+  log(
+    runId,
+    over ? "error" : "warn",
+    `${failedCount}/${totalScenes} scenes failed (${failedPct.toFixed(0)}%) · abort threshold ${threshold}%`,
+    { stage: "pipeline" }
+  );
+  if (over) {
+    throw new Error(
+      `Too many scenes failed: ${failedCount}/${totalScenes} (${failedPct.toFixed(0)}% over the ${threshold}% threshold). The partial assets are kept — use Resume on the run page to regenerate only the missing scenes.`
+    );
+  }
+}
+
+/** Final assembly + Drive sync + mark the run done. Shared by both flows. */
+async function finishRun(
+  runId: string,
+  sceneAssets: AssembleInput[],
+  runDir: string
+): Promise<void> {
+  checkCancelled(runId);
+  const finalPath = await assembleVideo(runId, sceneAssets, runDir);
+
+  // Drive sync is best-effort — a failed upload must not roll back a
+  // successful generation.
+  try {
+    await syncRunToDrive(runId, sceneAssets, runDir, finalPath);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    log(runId, "warn", `Drive sync failed (local files preserved): ${msg}`, { stage: "gdrive" });
+  }
+
+  updateRun.run("done", finalPath, runId);
+  log(runId, "success", "Pipeline complete", { stage: "pipeline", data: { finalPath } });
+}
+
+/** Translate a thrown error into the right run status + log. Shared catch. */
+function handlePipelineError(runId: string, e: unknown): void {
+  if (e instanceof CancelledError) {
+    log(runId, "warn", "Pipeline cancelled by user", { stage: "pipeline" });
+    // status 'cancelled' was already set by the cancel endpoint
+  } else {
+    const msg = e instanceof Error ? e.message : String(e);
+    log(runId, "error", `Pipeline crashed: ${msg}`, { stage: "pipeline" });
+    updateRun.run("error", null, runId);
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Full run
+// ───────────────────────────────────────────────────────────────────────────
 
 export async function runPipeline(runId: string, script: string) {
   const runDir = getRunDir(runId);
@@ -35,30 +159,14 @@ export async function runPipeline(runId: string, script: string) {
     updateRun.run("running", null, runId);
     log(runId, "info", `Pipeline started · folder: ${path.basename(runDir)}`, { stage: "pipeline" });
 
-    // 1. Split script into scenes — using a chosen channel profile if the user
-    //    picked one on the New Run page (snapshot is stored on the run row).
-    //    `preset_animation_motion` overrides the Animation Motion suffix and
-    //    `preset_voice_id` overrides the HeyGen voice — both per channel.
-    const presetRow = getPresetSnapshotStmt.get(runId) as
-      | {
-          preset_content: string | null;
-          preset_animation_motion: string | null;
-          preset_voice_id: string | null;
-        }
-      | undefined;
-    const overridePrompt = presetRow?.preset_content ?? undefined;
-    const motionOverride = presetRow?.preset_animation_motion ?? null;
-    const voiceOverride = presetRow?.preset_voice_id ?? null;
-    const scenes = await splitScript(runId, script, overridePrompt);
+    // 1. Split script into scenes — channel profile snapshot drives the prompt,
+    //    voice and motion overrides.
+    const { scenePrompt, motionOverride, voiceOverride } = readPresetSnapshot(runId);
+    const scenes = await splitScript(runId, script, scenePrompt);
     checkCancelled(runId);
     fs.writeFileSync(path.join(runDir, "scenes.json"), JSON.stringify(scenes, null, 2), "utf-8");
 
-    // Reuse map (set when user picked clips from the library on the New Run page).
-    // Keys are scene_index as string, values are Drive file IDs.
-    const reuseRow = getReuseMapStmt.get(runId) as { reuse_map_json: string | null } | undefined;
-    const reuseMap: Record<string, string> = reuseRow?.reuse_map_json
-      ? (JSON.parse(reuseRow.reuse_map_json) as Record<string, string>)
-      : {};
+    const reuseMap = readReuseMap(runId);
     const reuseCount = Object.keys(reuseMap).length;
     if (reuseCount > 0) {
       log(
@@ -69,26 +177,7 @@ export async function runPipeline(runId: string, script: string) {
       );
     }
 
-    // 2. Per scene: TTS + Image + (Animation as soon as image is ready) — all
-    //    interleaved in a single loop. No "wait for all images then start animations"
-    //    phase, which saves ~30–50% of total time.
-    //
-    // Concurrency limits below are PER KEY. With N 69labs keys configured, the
-    // effective parallel job count is (limit × N) — each key has its own 7-image
-    // / 5-video cap on the 69labs side.
-    // Conveyer Grok is video-only — no image stage, so no imageConcurrency.
-    const keyCount = Math.max(1, getKeyCount());
-    const ttsConcurrencyPerKey = Math.max(1, Number(getSetting("TTS_CONCURRENCY") || "3"));
-    const animConcurrencyPerKey = Math.max(1, Number(getSetting("ANIMATION_CONCURRENCY") || "3"));
-    const ttsConcurrency = ttsConcurrencyPerKey * keyCount;
-    const animConcurrency = animConcurrencyPerKey * keyCount;
-    const limitTts = pLimit(ttsConcurrency);
-    const limitAnim = pLimit(animConcurrency);
-
-    // Conveyer Grok is VIDEO-ONLY: every scene is a Grok text-to-video clip via 69labs.
-    // No Ken-Burns photos, no image stage, no img2vid fallback. The animation
-    // provider must be set and EVERY scene gets animated. If a Grok job fails,
-    // the scene fails (no photo fallback to mask it).
+    // 2. Guard: Conveyer Grok is video-only, the animation provider must be set.
     const animProvider = (getSetting("ANIMATION_PROVIDER") || "69labs").toLowerCase();
     if (animProvider === "off") {
       throw new Error(
@@ -96,29 +185,19 @@ export async function runPipeline(runId: string, script: string) {
       );
     }
 
+    // 3. Per scene: TTS + Grok text-to-video, interleaved, concurrency-limited.
+    const { keyCount, ttsPerKey, animPerKey, limitTts, limitAnim } = makeLimiters();
     log(
       runId,
       "info",
-      `Generating ${scenes.length} scenes (video-only). Keys: ${keyCount} · Concurrency (per key × keys): TTS=${ttsConcurrencyPerKey}×${keyCount}=${ttsConcurrency}, video=${animConcurrencyPerKey}×${keyCount}=${animConcurrency}. Provider: ${animProvider}`,
+      `Generating ${scenes.length} scenes (video-only). Keys: ${keyCount} · Concurrency per key×keys: TTS=${ttsPerKey}×${keyCount}, video=${animPerKey}×${keyCount}. Provider: ${animProvider}`,
       { stage: "pipeline" }
     );
-
-    type SceneResult = (AssembleInput & {
-      _imgProviderJobId?: string;
-      _imgProvider?: string;
-    }) | null;
 
     const settled: SceneResult[] = await Promise.all(
       scenes.map(async (scene): Promise<SceneResult> => {
         try {
           checkCancelled(runId);
-          // Video-only mode: TTS + Grok text-to-video run in parallel. NO image
-          // generation step. Grok gets just the scene's visual_prompt — no
-          // keyframe — and generates the clip from scratch.
-          //
-          // If this scene has a reuse mapping (user picked a clip from the
-          // library), skip Grok entirely and download the existing clip from
-          // Drive in parallel with TTS — no quota consumed, much faster.
           const reuseFileId = reuseMap[String(scene.index)];
           const [audio, videoPath] = await Promise.all([
             limitTts(() => synthesizeScene(runId, scene, audioDir, { voiceOverride })),
@@ -126,20 +205,8 @@ export async function runPipeline(runId: string, script: string) {
               ? downloadReusedClip(runId, scene, reuseFileId, animDir)
               : limitAnim(() => animateScene(runId, scene, null, animDir, { motionOverride })),
           ]);
-
-          if (!videoPath) {
-            throw new Error(`Scene #${scene.index} produced no video clip`);
-          }
-
-          return {
-            scene,
-            // imagePath is irrelevant in video-only mode but the AssembleInput
-            // shape still requires a string. video-assemble uses videoPath if
-            // it's set, so this value is never actually read.
-            imagePath: videoPath,
-            videoPath,
-            audio,
-          };
+          if (!videoPath) throw new Error(`Scene #${scene.index} produced no video clip`);
+          return { scene, imagePath: videoPath, videoPath, audio };
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           log(runId, "error", `Scene #${scene.index} failed: ${msg.slice(0, 200)}`, { stage: "pipeline" });
@@ -148,58 +215,128 @@ export async function runPipeline(runId: string, script: string) {
       })
     );
 
-    const sceneAssets = settled.filter((x): x is NonNullable<SceneResult> => x !== null);
-    const failedCount = scenes.length - sceneAssets.length;
-
-    if (failedCount > 0) {
-      const failedPct = (failedCount / scenes.length) * 100;
-      // Abort threshold is configurable (Advanced settings). On unreliable
-      // nights raise it so a partial run survives and can be Resumed instead
-      // of being thrown away.
-      const failureThreshold = Math.max(
-        0,
-        Math.min(100, Number(getSetting("FAILURE_THRESHOLD_PERCENT") || "25"))
-      );
-      const over = failedPct > failureThreshold;
-      log(
-        runId,
-        over ? "error" : "warn",
-        `${failedCount}/${scenes.length} scenes failed (${failedPct.toFixed(0)}%) · abort threshold ${failureThreshold}%`,
-        { stage: "pipeline" }
-      );
-      if (over) {
-        throw new Error(
-          `Too many scenes failed: ${failedCount}/${scenes.length} (${failedPct.toFixed(0)}% over the ${failureThreshold}% threshold). The partial assets are kept — use Resume on the run page to regenerate only the missing scenes.`
-        );
-      }
-    }
+    const sceneAssets = settled.filter((x): x is AssembleInput => x !== null);
+    enforceFailureThreshold(runId, scenes.length, sceneAssets.length);
     if (sceneAssets.length === 0) throw new Error("No scenes succeeded");
 
+    await finishRun(runId, sceneAssets, runDir);
+  } catch (e) {
+    handlePipelineError(runId, e);
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Resume — regenerate only the missing scenes of a failed/partial run
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Resumes a run that failed or was cancelled partway through. Reads the saved
+ * scenes.json, keeps every scene whose audio + video are already on disk, and
+ * regenerates ONLY the missing ones — then re-assembles and re-uploads.
+ *
+ * This is what makes runs failure-proof: a provider glitch / rate-cap night
+ * no longer throws away clips already paid for.
+ */
+export async function resumeRun(runId: string) {
+  const runDir = getRunDir(runId);
+  const audioDir = path.join(runDir, "audio");
+  const animDir = path.join(runDir, "animations");
+  for (const d of [runDir, audioDir, animDir]) fs.mkdirSync(d, { recursive: true });
+
+  try {
+    clearCancelled(runId);
+    updateRun.run("running", null, runId);
+    log(runId, "info", "Resume started — keeping finished scenes, regenerating the rest", {
+      stage: "pipeline",
+    });
+
+    // The saved scene plan is required — without it there's nothing to resume.
+    const scenesPath = path.join(runDir, "scenes.json");
+    if (!fileReady(scenesPath)) {
+      throw new Error(
+        "scenes.json not found for this run — there's no saved scene plan to resume from. Start a fresh run instead."
+      );
+    }
+    const scenes = JSON.parse(fs.readFileSync(scenesPath, "utf-8")) as Scene[];
+    if (!Array.isArray(scenes) || scenes.length === 0) {
+      throw new Error("scenes.json is empty or invalid — start a fresh run instead.");
+    }
     checkCancelled(runId);
 
-    // 3. Assemble final video
-    const finalPath = await assembleVideo(runId, sceneAssets, runDir);
+    const { motionOverride, voiceOverride } = readPresetSnapshot(runId);
+    const reuseMap = readReuseMap(runId);
 
-    // 4. Google Drive sync (best-effort). The run is already "done" the moment
-    //    final.mp4 exists on disk — Drive upload failures must not roll back a
-    //    successful generation. We catch internally and log the warning.
-    try {
-      await syncRunToDrive(runId, sceneAssets, runDir, finalPath);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      log(runId, "warn", `Drive sync failed (local files preserved): ${msg}`, { stage: "gdrive" });
+    const animProvider = (getSetting("ANIMATION_PROVIDER") || "69labs").toLowerCase();
+    if (animProvider === "off") {
+      throw new Error(
+        "Conveyer Grok is video-only: ANIMATION_PROVIDER cannot be 'off'. Set it to '69labs' in /settings."
+      );
     }
 
-    updateRun.run("done", finalPath, runId);
-    log(runId, "success", "Pipeline complete", { stage: "pipeline", data: { finalPath } });
+    const alreadyComplete = scenes.filter(
+      (s) => fileReady(audioPathFor(audioDir, s.index)) && fileReady(videoPathFor(animDir, s.index))
+    ).length;
+    log(
+      runId,
+      "info",
+      `${alreadyComplete}/${scenes.length} scenes already complete on disk — regenerating the remaining ${scenes.length - alreadyComplete}`,
+      { stage: "pipeline" }
+    );
+
+    const { limitTts, limitAnim } = makeLimiters();
+
+    const settled: SceneResult[] = await Promise.all(
+      scenes.map(async (scene): Promise<SceneResult> => {
+        try {
+          checkCancelled(runId);
+          const aPath = audioPathFor(audioDir, scene.index);
+          const vPath = videoPathFor(animDir, scene.index);
+
+          // Audio: reuse the file on disk, else regenerate via HeyGen.
+          let audio: TtsResult;
+          if (fileReady(aPath)) {
+            const size = fs.statSync(aPath).size;
+            audio = { filePath: aPath, durationSec: Math.max(1, size / 16000) };
+          } else {
+            audio = await limitTts(() => synthesizeScene(runId, scene, audioDir, { voiceOverride }));
+          }
+
+          // Video: reuse the clip on disk, else regenerate via Grok (or reuse
+          // map → download from Drive).
+          let videoPath: string;
+          if (fileReady(vPath)) {
+            videoPath = vPath;
+          } else {
+            const reuseFileId = reuseMap[String(scene.index)];
+            const generated = reuseFileId
+              ? await downloadReusedClip(runId, scene, reuseFileId, animDir)
+              : await limitAnim(() => animateScene(runId, scene, null, animDir, { motionOverride }));
+            if (!generated) throw new Error(`Scene #${scene.index} produced no video clip`);
+            videoPath = generated;
+          }
+
+          return { scene, imagePath: videoPath, videoPath, audio };
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          log(runId, "error", `Scene #${scene.index} failed: ${msg.slice(0, 200)}`, { stage: "pipeline" });
+          return null;
+        }
+      })
+    );
+
+    const sceneAssets = settled.filter((x): x is AssembleInput => x !== null);
+    enforceFailureThreshold(runId, scenes.length, sceneAssets.length);
+    if (sceneAssets.length === 0) throw new Error("No scenes succeeded");
+
+    await finishRun(runId, sceneAssets, runDir);
   } catch (e) {
-    if (e instanceof CancelledError) {
-      log(runId, "warn", "Pipeline cancelled by user", { stage: "pipeline" });
-      // status 'cancelled' was already set by the API endpoint, don't overwrite
-    } else {
-      const msg = e instanceof Error ? e.message : String(e);
-      log(runId, "error", `Pipeline crashed: ${msg}`, { stage: "pipeline" });
-      updateRun.run("error", null, runId);
-    }
+    handlePipelineError(runId, e);
   }
+}
+
+/** Whether a run can be resumed — needs a row + a saved scenes.json on disk. */
+export function canResumeRun(runId: string): boolean {
+  const row = getRunRowStmt.get(runId) as { id: string } | undefined;
+  if (!row) return false;
+  return fileReady(path.join(getRunDir(runId), "scenes.json"));
 }
