@@ -131,6 +131,7 @@ async function labs69Img2Vid(
         duration,
         imageJobId: usableJobId,
         mute: !keepAudio,
+        runId,
       });
       lastJobId = jobId;
       log(

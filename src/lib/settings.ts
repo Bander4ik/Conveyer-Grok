@@ -73,6 +73,11 @@ export const SETTING_KEYS = [
   "ASSEMBLE_CONCURRENCY",    // parallel FFmpeg clip renders
   "ASSEMBLE_XFADE_CHUNKS",   // split final xfade into N parallel chunks (1 = monolithic)
 
+  // ── Reliability / scaling ─────────────────────────────────────────
+  "FAILURE_THRESHOLD_PERCENT", // 0–100. If more than this % of scenes fail, the run aborts. Default 25.
+  "AUTO_REUSE_ENABLED",      // "1" = pipeline auto-searches the library and reuses matches without a preview step
+  "AUTO_REUSE_THRESHOLD",    // 0–100 confidence %. Scenes matching at/above this are auto-reused. Default 80.
+
   // ── Google Drive sync ─────────────────────────────────────────────
   // OAuth2 credentials from Google Cloud Console (Web Application client).
   // Redirect URI must be set to http://localhost:3000/api/gdrive/oauth/callback
@@ -210,6 +215,11 @@ export const DEFAULTS: Record<SettingKey, string> = {
   ANIMATION_CONCURRENCY: "3",
   ASSEMBLE_CONCURRENCY: "4",
   ASSEMBLE_XFADE_CHUNKS: "4",
+
+  // Reliability / scaling
+  FAILURE_THRESHOLD_PERCENT: "25",
+  AUTO_REUSE_ENABLED: "",
+  AUTO_REUSE_THRESHOLD: "80",
 
   // Google Drive — all empty by default. User fills client_id/secret;
   // OAuth flow fills refresh_token + email; folders auto-create on first sync.

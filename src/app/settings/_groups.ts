@@ -210,6 +210,27 @@ export const ALL_GROUPS: Group[] = [
     ],
   },
   {
+    title: "Reliability & Scaling",
+    subtitle: "How tolerant a run is of failures, and whether the pipeline reuses library clips automatically. Matters most at high volume on unreliable nights.",
+    fields: [
+      {
+        key: "FAILURE_THRESHOLD_PERCENT",
+        desc: "If more than this percentage of scenes fail, the whole run aborts. Default 25. On unreliable nights (provider glitches) raise it to 60-70 so a partial run survives — you can then Resume it from the run page to regenerate only the missing scenes instead of losing everything.",
+        examples: "25 = default (strict)  ·  60-70 = tolerant (keep partial runs)  ·  100 = never abort",
+      },
+      {
+        key: "AUTO_REUSE_ENABLED",
+        desc: "When ON, the pipeline automatically searches the Google Drive library at the start of every run and reuses matching clips — no Preview step, no manual approval clicking. Requires Drive connected. The run log reports how many clips were auto-reused and how much generation was skipped.",
+        examples: "1 = auto-reuse on  ·  empty = off (manual Preview + pick)",
+      },
+      {
+        key: "AUTO_REUSE_THRESHOLD",
+        desc: "Confidence percentage for auto-reuse. A scene is reused only if the best library match scores at or above this. Higher = stricter (fewer but safer reuses). Only used when AUTO_REUSE_ENABLED is on.",
+        examples: "80 = default  ·  90 = very strict  ·  70 = aggressive reuse",
+      },
+    ],
+  },
+  {
     title: "Optional / Alternative Providers",
     subtitle: "Only needed if you switch away from the default Grok + HeyGen stack. Leave empty otherwise.",
     fields: [

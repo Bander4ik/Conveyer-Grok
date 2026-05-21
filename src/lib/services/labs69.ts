@@ -113,16 +113,49 @@ function keyFor(jobId: string): string {
   return keys[0];
 }
 
-async function postJsonWithKey<T>(path: string, body: unknown, key: string): Promise<T> {
-  const r = await fetch(`${BASE}${path}`, {
-    method: "POST",
-    headers: authHeadersFor(key),
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) {
+/**
+ * POST helper. Transparently waits out HTTP 429 (rate limit / hourly cap)
+ * instead of failing the run: 69labs caps throughput per hour, so an
+ * overnight batch must be able to sleep through the cap and continue.
+ * Honors a `Retry-After` header when present, otherwise escalates the wait.
+ * Non-429 errors propagate immediately.
+ */
+async function postJsonWithKey<T>(
+  path: string,
+  body: unknown,
+  key: string,
+  ctx?: { runId: string; stage: string }
+): Promise<T> {
+  const MAX_RATE_RETRIES = 40;
+  let rateRetry = 0;
+  while (true) {
+    const r = await fetch(`${BASE}${path}`, {
+      method: "POST",
+      headers: authHeadersFor(key),
+      body: JSON.stringify(body),
+    });
+    if (r.ok) return (await r.json()) as T;
+
+    if (r.status === 429 && rateRetry < MAX_RATE_RETRIES) {
+      rateRetry++;
+      const retryAfter = Number(r.headers.get("retry-after"));
+      const waitMs =
+        Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.min(retryAfter * 1000, 10 * 60_000)
+          : Math.min(10 * 60_000, 20_000 * rateRetry); // 20s, 40s, … capped at 10min
+      if (ctx) {
+        log(
+          ctx.runId,
+          "warn",
+          `69labs rate limit (429) — waiting ${Math.round(waitMs / 1000)}s then retrying (${rateRetry}/${MAX_RATE_RETRIES})`,
+          { stage: ctx.stage }
+        );
+      }
+      await sleep(waitMs);
+      continue;
+    }
     throw new Error(`69labs POST ${path} ${r.status}: ${(await r.text()).slice(0, 400)}`);
   }
-  return (await r.json()) as T;
 }
 
 interface JobCreatedResponse {
@@ -153,15 +186,19 @@ export async function createTtsJob(opts: {
   autoPauseEnabled?: boolean;
   autoPauseDuration?: number;
   autoPauseFrequency?: number;
+  /** Optional — enables rate-limit (429) wait logging into the run log. */
+  runId?: string;
 }): Promise<string> {
   const key = pool.pick();
+  const ctx = opts.runId ? { runId: opts.runId, stage: "tts" } : undefined;
   try {
     // Voice-clone uses a different endpoint
     if (opts.voiceProvider === "voice-clone") {
       const resp = await postJsonWithKey<JobCreatedResponse>(
         "/voice-clones/generate",
         { voiceCloneId: opts.voiceId, text: opts.text },
-        key
+        key,
+        ctx
       );
       jobKeyMap.set(resp.id, key);
       return resp.id;
@@ -181,7 +218,7 @@ export async function createTtsJob(opts: {
       if (opts.autoPauseDuration !== undefined) body.autoPauseDuration = opts.autoPauseDuration;
       if (opts.autoPauseFrequency !== undefined) body.autoPauseFrequency = opts.autoPauseFrequency;
     }
-    const resp = await postJsonWithKey<JobCreatedResponse>("/tts/generate", body, key);
+    const resp = await postJsonWithKey<JobCreatedResponse>("/tts/generate", body, key, ctx);
     jobKeyMap.set(resp.id, key);
     return resp.id;
   } catch (e) {
@@ -242,6 +279,8 @@ export async function createVideoJob(opts: {
   imageJobId?: string;
   imageUrls?: string[];
   mute?: boolean;
+  /** Optional — enables rate-limit (429) wait logging into the run log. */
+  runId?: string;
 }): Promise<string> {
   // Pick a key — but if we're chaining off an existing image job, reuse its key
   let key: string;
@@ -251,6 +290,7 @@ export async function createVideoJob(opts: {
   } else {
     key = pool.pick();
   }
+  const ctx = opts.runId ? { runId: opts.runId, stage: "animate" } : undefined;
 
   try {
     const body: Record<string, unknown> = { prompt: opts.prompt };
@@ -264,7 +304,8 @@ export async function createVideoJob(opts: {
     const resp = await postJsonWithKey<JobCreatedResponse | MultiJobCreatedResponse>(
       "/videos/generate",
       body,
-      key
+      key,
+      ctx
     );
     const id = "jobs" in resp ? resp.jobs[0].id : resp.id;
     jobKeyMap.set(id, key);
@@ -290,6 +331,12 @@ export async function pollJob(
   while (true) {
     const r = await fetch(`${BASE}/${kind}/status/${jobId}`, { headers: authHeadersFor(key) });
     if (!r.ok) {
+      // A 429 on the status endpoint is transient — back off and keep polling
+      // rather than failing the job.
+      if (r.status === 429) {
+        await sleep(POLL_INTERVAL_MS * 4);
+        continue;
+      }
       throw new Error(`69labs status ${kind}/${jobId} ${r.status}: ${(await r.text()).slice(0, 200)}`);
     }
     const json = (await r.json()) as { status: JobStatus; userMessage?: string | null };

@@ -153,14 +153,24 @@ export async function runPipeline(runId: string, script: string) {
 
     if (failedCount > 0) {
       const failedPct = (failedCount / scenes.length) * 100;
+      // Abort threshold is configurable (Advanced settings). On unreliable
+      // nights raise it so a partial run survives and can be Resumed instead
+      // of being thrown away.
+      const failureThreshold = Math.max(
+        0,
+        Math.min(100, Number(getSetting("FAILURE_THRESHOLD_PERCENT") || "25"))
+      );
+      const over = failedPct > failureThreshold;
       log(
         runId,
-        failedPct > 25 ? "error" : "warn",
-        `${failedCount}/${scenes.length} scenes failed (${failedPct.toFixed(0)}%)`,
+        over ? "error" : "warn",
+        `${failedCount}/${scenes.length} scenes failed (${failedPct.toFixed(0)}%) · abort threshold ${failureThreshold}%`,
         { stage: "pipeline" }
       );
-      if (failedPct > 25) {
-        throw new Error(`Too many scenes failed: ${failedCount}/${scenes.length}`);
+      if (over) {
+        throw new Error(
+          `Too many scenes failed: ${failedCount}/${scenes.length} (${failedPct.toFixed(0)}% over the ${failureThreshold}% threshold). The partial assets are kept — use Resume on the run page to regenerate only the missing scenes.`
+        );
       }
     }
     if (sceneAssets.length === 0) throw new Error("No scenes succeeded");
